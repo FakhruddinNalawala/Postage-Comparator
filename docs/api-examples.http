@@ -1,0 +1,70 @@
+@baseUrl = http://localhost:8080/api
+
+### Get origin settings
+GET {{baseUrl}}/settings/origin
+
+### Update origin settings
+PUT {{baseUrl}}/settings/origin
+Content-Type: application/json
+
+{
+  "postcode": "2000",
+  "suburb": "Sydney",
+  "state": "NSW",
+  "country": "AU",
+  "themePreference": "dark"
+}
+
+### Update theme preference only
+PUT {{baseUrl}}/settings/theme
+Content-Type: application/json
+
+{
+  "themePreference": "light"
+}
+
+### List items
+GET {{baseUrl}}/items
+
+### Create item
+POST {{baseUrl}}/items
+Content-Type: application/json
+
+{
+  "name": "T-shirt",
+  "description": "Unisex cotton tee",
+  "unitWeightGrams": 250
+}
+
+### List packaging
+GET {{baseUrl}}/packaging
+
+### Create packaging
+POST {{baseUrl}}/packaging
+Content-Type: application/json
+
+{
+  "name": "Small satchel",
+  "description": "250 x 330mm satchel",
+  "lengthCm": 25,
+  "heightCm": 33,
+  "widthCm": 7,
+  "internalVolumeCubicCm": 6000,
+  "packagingCostAud": 0.75
+}
+
+### Create quote
+POST {{baseUrl}}/quotes
+Content-Type: application/json
+
+{
+  "destinationPostcode": "3000",
+  "destinationSuburb": "Melbourne",
+  "destinationState": "VIC",
+  "country": "AU",
+  "items": [
+    { "itemId": "item-123", "quantity": 2 }
+  ],
+  "packagingId": "pack-1",
+  "isExpress": false
+}

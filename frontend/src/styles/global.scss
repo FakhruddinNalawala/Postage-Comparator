@@ -1,0 +1,169 @@
+@use './tokens';
+@use './mixins' as mix;
+
+.status-banner {
+  background: var(--bg-banner);
+  border: 1px solid var(--border-banner);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.status-banner.error {
+  background: var(--bg-banner-error);
+  border-color: var(--border-banner-error);
+}
+
+.panel {
+  @include mix.panel-surface;
+  padding: 1.25rem;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.quote-panel {
+  margin-top: 1rem;
+}
+
+.card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.card {
+  @include mix.card-surface;
+  padding: 1rem;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.btn {
+  @include mix.button-base;
+}
+
+.btn.primary {
+  background: var(--bg-btn-primary);
+  border-color: var(--border-btn-primary);
+}
+
+.btn.danger {
+  background: var(--bg-btn-danger);
+  border-color: var(--border-btn-danger);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.form-grid input,
+.form-grid select {
+  @include mix.input-base;
+}
+
+.checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.line-items {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 1rem;
+}
+
+.line-items-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.line-item {
+  display: grid;
+  grid-template-columns: 1fr 120px auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.form-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 20;
+}
+
+.modal {
+  @include mix.modal-surface;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.modal.modal-wide {
+  width: min(900px, 100%);
+}
+
+.modal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.warning {
+  color: var(--text-warning);
+  font-size: 0.9rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.error-text {
+  color: var(--text-error);
+  margin-top: 0.5rem;
+}
+
+.loading-text {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-style: italic;
+}

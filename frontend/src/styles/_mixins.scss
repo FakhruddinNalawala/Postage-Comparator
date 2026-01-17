@@ -1,0 +1,44 @@
+@use './tokens' as t;
+
+@mixin panel-surface {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: t.$radius-lg;
+}
+
+@mixin card-surface {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: t.$radius-md;
+}
+
+@mixin summary-surface {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: t.$radius-md;
+}
+
+@mixin button-base {
+  background: var(--bg-btn);
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  padding: 0.4rem 0.75rem;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+}
+
+@mixin input-base {
+  background: var(--bg-control);
+  border: 1px solid var(--border-input);
+  border-radius: t.$radius-sm;
+  padding: t.$space-sm;
+  color: var(--text-primary);
+}
+
+@mixin modal-surface {
+  background: var(--modal-bg);
+  border: 1px solid var(--border-input);
+  border-radius: t.$radius-lg;
+  padding: t.$space-2xl;
+  width: min(600px, 100%);
+}
