@@ -145,3 +145,21 @@
   - Refine Dockerfile and `docker-compose.yml` as carrier APIs and configuration evolve.
   - Optionally add Makefile or scripts for common dev tasks.
 
+---
+
+### G. Provider SPI & Connectors
+
+- [ ] **G1 – Provider SPI foundation**
+  - Add a `CarrierProvider` interface and `ProviderRegistry` for pluggable providers.
+  - Define provider config model and enablement via env/config.
+
+- [ ] **G2 – AusPost connector extraction**
+  - Move AusPost API logic into an `AusPostProvider` implementation.
+  - Reuse existing WebClient config and parsing helpers.
+
+- [ ] **G3 – QuoteService orchestration via SPI**
+  - Update `QuoteServiceImpl` to iterate enabled providers and preserve rules fallback.
+
+- [ ] **G4 – SPI tests**
+  - Update `QuoteServiceImplTest` to mock providers via registry.
+  - Add unit tests for provider enablement and registry selection.

@@ -25,4 +25,10 @@ public interface SettingsService {
      * @return unmodifiable list of WeightBracket objects
      */
     List<WeightBracket> getAusPostWeightBrackets();
+
+    String getShippitApiKey();
+
+    String getShipStationApiKey();
+
+    String getAfterShipApiKey();
 }

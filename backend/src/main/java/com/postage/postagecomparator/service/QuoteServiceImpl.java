@@ -1,21 +1,17 @@
 package com.postage.postagecomparator.service;
 
 import com.postage.postagecomparator.model.*;
-
-import reactor.core.publisher.Mono;
+import com.postage.postagecomparator.config.ProviderConfig;
+import com.postage.postagecomparator.provider.CarrierProvider;
+import com.postage.postagecomparator.provider.ProviderRegistry;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
 import com.postage.postagecomparator.util.DeliveryEtaUtils;
 
 @Service
@@ -23,56 +19,78 @@ public class QuoteServiceImpl implements QuoteService {
 
     private static final Logger log = LoggerFactory.getLogger(QuoteServiceImpl.class);
 
-    private final WebClient ausPostWebClient;
     // Sendle integration is currently disabled.
     // private final WebClient sendleWebClient;
     private final SettingsService settingsService;
-    private final ItemService itemService;
-    private final PackagingService packagingService;
+    private final QuoteRequestHelper requestHelper;
+    private final ProviderRegistry providerRegistry;
+    private final ProviderConfig providerConfig;
 
     public QuoteServiceImpl(
-            @Qualifier("ausPostWebClient") WebClient ausPostWebClient,
             SettingsService settingsService,
-            ItemService itemService,
-            PackagingService packagingService) {
-        this.ausPostWebClient = ausPostWebClient;
+            QuoteRequestHelper requestHelper,
+            ProviderRegistry providerRegistry,
+            ProviderConfig providerConfig) {
         this.settingsService = settingsService;
-        this.itemService = itemService;
-        this.packagingService = packagingService;
+        this.requestHelper = requestHelper;
+        this.providerRegistry = providerRegistry;
+        this.providerConfig = providerConfig;
     }
 
     @Override
     public QuoteResult calculateQuote(ShipmentRequest request) {
         // Validate request
-        validateRequest(request);
+        requestHelper.validateRequest(request);
 
         // Get origin settings
-        OriginSettings origin = settingsService.getOriginSettings();
-        if (origin == null) {
-            throw new IllegalStateException("Origin settings must be configured before calculating quotes");
-        }
+        OriginSettings origin = requestHelper.getOriginSettingsOrThrow();
 
         // Get packaging
-        Packaging packaging = getPackaging(request.packagingId());
+        Packaging packaging = requestHelper.getPackaging(request.packagingId());
 
         // Calculate total weight and volume
-        int totalWeightGrams = calculateTotalWeight(request.items());
+        int totalWeightGrams = requestHelper.calculateTotalWeight(request.items());
         double weightInKg = totalWeightGrams / 1000.0;
         double volumeWeightInKg = packaging.internalVolumeCubicCm() * 0.25 / 1000.0; // Volume weight: 250g per 1000cm³ = 0.25kg per 1000cm³
         int totalVolumeCubicCm = packaging.internalVolumeCubicCm();
 
         // Build destination
-        QuoteResult.Destination destination = buildDestination(request);
+        QuoteResult.Destination destination = requestHelper.buildDestination(request);
 
         // Calculate carrier quotes
         List<CarrierQuote> carrierQuotes = new ArrayList<>();
 
         // When API clients are implemented, try live APIs first and fall back to rules.
-        CarrierQuote ausPostApiQuote = tryAusPostApi(origin, destination, totalWeightGrams, packaging,
-                request.isExpress());
-        if (ausPostApiQuote != null) {
-            carrierQuotes.add(ausPostApiQuote);
-        } else {
+        List<Item> resolvedItems = requestHelper.resolveItems(request.items());
+        boolean ausPostProvidedQuote = false;
+
+        for (CarrierProvider provider : providerRegistry.getEnabledProviders(providerConfig)) {
+            String providerName = provider.getName();
+            try {
+                var multiQuotes = provider.quotes(request, origin, packaging, resolvedItems);
+                if (multiQuotes != null && multiQuotes.isPresent() && !multiQuotes.get().isEmpty()) {
+                    carrierQuotes.addAll(multiQuotes.get());
+                    if ("auspost".equalsIgnoreCase(providerName)) {
+                        ausPostProvidedQuote = true;
+                    }
+                    continue;
+                }
+
+                var singleQuote = provider.quote(request, origin, packaging, resolvedItems);
+                if (singleQuote != null && singleQuote.isPresent()) {
+                    carrierQuotes.add(singleQuote.get());
+                    if ("auspost".equalsIgnoreCase(providerName)) {
+                        ausPostProvidedQuote = true;
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.error("Provider '{}' failed during quote; continuing with other providers. Stack: {}",
+                        providerName,
+                        summarizeStackTrace(e));
+            }
+        }
+
+        if (!ausPostProvidedQuote) {
             carrierQuotes.add(calculateAusPostRulesBasedQuote(origin, destination, totalWeightGrams, packaging,
                     request.isExpress()));
         }
@@ -89,50 +107,6 @@ public class QuoteServiceImpl implements QuoteService {
                 carrierQuotes,
                 "AUD",
                 Instant.now());
-    }
-
-    private void validateRequest(ShipmentRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("ShipmentRequest must not be null");
-        }
-        if (request.destinationPostcode() == null || request.destinationPostcode().isBlank()) {
-            throw new IllegalArgumentException("Destination postcode is required");
-        }
-        if (request.items() == null || request.items().isEmpty()) {
-            throw new IllegalArgumentException("At least one item is required");
-        }
-        if (request.packagingId() == null || request.packagingId().isBlank()) {
-            throw new IllegalArgumentException("Packaging is required");
-        }
-        // Validate item quantities
-        for (ShipmentItemSelection itemSelection : request.items()) {
-            if (itemSelection.quantity() <= 0) {
-                throw new IllegalArgumentException("Item quantity must be greater than 0");
-            }
-        }
-    }
-
-    private Packaging getPackaging(String packagingId) {
-        return packagingService.findById(packagingId)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging with id " + packagingId + " not found"));
-    }
-
-    private int calculateTotalWeight(List<ShipmentItemSelection> itemSelections) {
-        return itemSelections.stream()
-                .mapToInt(selection -> {
-                    Item item = itemService.findById(selection.itemId())
-                            .orElseThrow(() -> new IllegalArgumentException("Item with id " + selection.itemId() + " not found"));
-                    return item.unitWeightGrams() * selection.quantity();
-                })
-                .sum();
-    }
-
-    private QuoteResult.Destination buildDestination(ShipmentRequest request) {
-        return new QuoteResult.Destination(
-                request.destinationPostcode(),
-                request.destinationSuburb(),
-                request.destinationState(),
-                Optional.ofNullable(request.country()).orElse("AU"));
     }
 
     private CarrierQuote calculateAusPostRulesBasedQuote(
@@ -408,186 +382,187 @@ public class QuoteServiceImpl implements QuoteService {
     }
     */
 
-    private CarrierQuote tryAusPostApi(OriginSettings origin, QuoteResult.Destination destination, int totalWeightGrams,
-            Packaging packaging, boolean isExpress) {
+    // @SuppressWarnings("unused")
+    // private CarrierQuote tryAusPostApi(OriginSettings origin, QuoteResult.Destination destination, int totalWeightGrams,
+    //         Packaging packaging, boolean isExpress) {
 
-        String apiKey = settingsService.getAusPostApiKey();
-        if (apiKey == null || apiKey.isBlank()) {
-            log.info("AusPost API key not configured, skipping API call and using rules-based pricing");
-            return null; // Return null to allow fallback to rules
-        }
-        String uriAusPostCalculate = "/postage/parcel/domestic/calculate.json";
+    //     String apiKey = settingsService.getAusPostApiKey();
+    //     if (apiKey == null || apiKey.isBlank()) {
+    //         log.info("AusPost API key not configured, skipping API call and using rules-based pricing");
+    //         return null; // Return null to allow fallback to rules
+    //     }
+    //     String uriAusPostCalculate = "/postage/parcel/domestic/calculate.json";
 
-        String serviceCode = isExpress ? "AUS_PARCEL_EXPRESS" : "AUS_PARCEL_REGULAR";
+    //     String serviceCode = isExpress ? "AUS_PARCEL_EXPRESS" : "AUS_PARCEL_REGULAR";
 
-        log.info("Attempting AusPost API call: from {} {} to {} {}, weight: {}g, service: {}", 
-                origin.postcode(), origin.suburb(),
-                destination.postcode(), destination.suburb(),
-                totalWeightGrams, serviceCode);
+    //     log.info("Attempting AusPost API call: from {} {} to {} {}, weight: {}g, service: {}", 
+    //             origin.postcode(), origin.suburb(),
+    //             destination.postcode(), destination.suburb(),
+    //             totalWeightGrams, serviceCode);
 
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = ausPostWebClient
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path(uriAusPostCalculate)
-                            .queryParam("from_postcode", origin.postcode())
-                            .queryParam("to_postcode", destination.postcode())
-                            .queryParam("length", String.valueOf(packaging.lengthCm()))
-                            .queryParam("width", String.valueOf(packaging.widthCm()))
-                            .queryParam("height", String.valueOf(packaging.heightCm()))
-                            .queryParam("weight", String.valueOf(totalWeightGrams / 1000.0))
-                            .queryParam("service_code", serviceCode)
-                            .build())
-                    .header("AUTH-KEY", apiKey)
-                    .retrieve()
-                    .onStatus(
-                            status -> status.is4xxClientError(),
-                            clientResponse -> {
-                                log.error("AusPost API returned 4xx client error (status: {}). Request: from {} {} to {} {}. Service: {}", 
-                                        clientResponse.statusCode(),
-                                        origin.postcode(), origin.suburb(),
-                                        destination.postcode(), destination.suburb(),
-                                        serviceCode);
-                                return Mono.error(new RuntimeException("AusPost API client error: " + clientResponse.statusCode()));
-                            })
-                    .onStatus(
-                            status -> status.is5xxServerError(),
-                            clientResponse -> {
-                                log.error("AusPost API returned 5xx server error (status: {}). Request: from {} {} to {} {}. Service: {}", 
-                                        clientResponse.statusCode(),
-                                        origin.postcode(), origin.suburb(),
-                                        destination.postcode(), destination.suburb(),
-                                        serviceCode);
-                                return Mono.error(new RuntimeException("AusPost API server error: " + clientResponse.statusCode()));
-                            })
-                    .bodyToMono(Map.class)
-                    .block();
+    //     try {
+    //         @SuppressWarnings("unchecked")
+    //         Map<String, Object> response = ausPostWebClient
+    //                 .get()
+    //                 .uri(uriBuilder -> uriBuilder
+    //                         .path(uriAusPostCalculate)
+    //                         .queryParam("from_postcode", origin.postcode())
+    //                         .queryParam("to_postcode", destination.postcode())
+    //                         .queryParam("length", String.valueOf(packaging.lengthCm()))
+    //                         .queryParam("width", String.valueOf(packaging.widthCm()))
+    //                         .queryParam("height", String.valueOf(packaging.heightCm()))
+    //                         .queryParam("weight", String.valueOf(totalWeightGrams / 1000.0))
+    //                         .queryParam("service_code", serviceCode)
+    //                         .build())
+    //                 .header("AUTH-KEY", apiKey)
+    //                 .retrieve()
+    //                 .onStatus(
+    //                         status -> status.is4xxClientError(),
+    //                         clientResponse -> {
+    //                             log.error("AusPost API returned 4xx client error (status: {}). Request: from {} {} to {} {}. Service: {}", 
+    //                                     clientResponse.statusCode(),
+    //                                     origin.postcode(), origin.suburb(),
+    //                                     destination.postcode(), destination.suburb(),
+    //                                     serviceCode);
+    //                             return Mono.error(new RuntimeException("AusPost API client error: " + clientResponse.statusCode()));
+    //                         })
+    //                 .onStatus(
+    //                         status -> status.is5xxServerError(),
+    //                         clientResponse -> {
+    //                             log.error("AusPost API returned 5xx server error (status: {}). Request: from {} {} to {} {}. Service: {}", 
+    //                                     clientResponse.statusCode(),
+    //                                     origin.postcode(), origin.suburb(),
+    //                                     destination.postcode(), destination.suburb(),
+    //                                     serviceCode);
+    //                             return Mono.error(new RuntimeException("AusPost API server error: " + clientResponse.statusCode()));
+    //                         })
+    //                 .bodyToMono(Map.class)
+    //                 .block();
 
-            if (response == null) {
-                log.error("AusPost API returned null response. Request: from {} {} to {} {}. Service: {}", 
-                        origin.postcode(), origin.suburb(),
-                        destination.postcode(), destination.suburb(),
-                        serviceCode);
-                return null;
-            }
+    //         if (response == null) {
+    //             log.error("AusPost API returned null response. Request: from {} {} to {} {}. Service: {}", 
+    //                     origin.postcode(), origin.suburb(),
+    //                     destination.postcode(), destination.suburb(),
+    //                     serviceCode);
+    //             return null;
+    //         }
 
-            // Parse response and map to CarrierQuote
-            // AusPost API response structure: typically has "postage_result" with cost,
-            // service, etc.
-            log.debug("AusPost API call succeeded, parsing response");
-            CarrierQuote quote = parseAusPostResponse(response, packaging, isExpress);
-            if (quote != null) {
-                log.info("AusPost API quote successfully retrieved: ${}", quote.totalCostAud());
-            } else {
-                log.warn("AusPost API response parsed to null, falling back to rules");
-            }
-            return quote;
-        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
-            log.error("AusPost API returned error response (status: {}). Request: from {} {} to {} {}. Service: {}. Error: {}", 
-                    e.getStatusCode(),
-                    origin.postcode(), origin.suburb(),
-                    destination.postcode(), destination.suburb(),
-                    serviceCode,
-                    e.getMessage(), e);
-            return null;
-        } catch (org.springframework.web.reactive.function.client.WebClientException e) {
-            log.error("AusPost API network/client error. Request: from {} {} to {} {}. Service: {}. Error: {}", 
-                    origin.postcode(), origin.suburb(),
-                    destination.postcode(), destination.suburb(),
-                    serviceCode,
-                    e.getMessage(), e);
-            return null;
-        } catch (RuntimeException e) {
-            log.error("AusPost API call failed with runtime error. Request: from {} {} to {} {}. Service: {}. Error: {}", 
-                    origin.postcode(), origin.suburb(),
-                    destination.postcode(), destination.suburb(),
-                    serviceCode,
-                    e.getMessage(), e);
-            return null;
-        } catch (Exception e) {
-            log.error("AusPost API call failed with unexpected error. Request: from {} {} to {} {}. Service: {}. Error: {}", 
-                    origin.postcode(), origin.suburb(),
-                    destination.postcode(), destination.suburb(),
-                    serviceCode,
-                    e.getMessage(), e);
-            return null; // Return null to allow fallback to rules
-        }
-    }
+    //         // Parse response and map to CarrierQuote
+    //         // AusPost API response structure: typically has "postage_result" with cost,
+    //         // service, etc.
+    //         log.debug("AusPost API call succeeded, parsing response");
+    //         CarrierQuote quote = parseAusPostResponse(response, packaging, isExpress);
+    //         if (quote != null) {
+    //             log.info("AusPost API quote successfully retrieved: ${}", quote.totalCostAud());
+    //         } else {
+    //             log.warn("AusPost API response parsed to null, falling back to rules");
+    //         }
+    //         return quote;
+    //     } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+    //         log.error("AusPost API returned error response (status: {}). Request: from {} {} to {} {}. Service: {}. Error: {}", 
+    //                 e.getStatusCode(),
+    //                 origin.postcode(), origin.suburb(),
+    //                 destination.postcode(), destination.suburb(),
+    //                 serviceCode,
+    //                 e.getMessage(), e);
+    //         return null;
+    //     } catch (org.springframework.web.reactive.function.client.WebClientException e) {
+    //         log.error("AusPost API network/client error. Request: from {} {} to {} {}. Service: {}. Error: {}", 
+    //                 origin.postcode(), origin.suburb(),
+    //                 destination.postcode(), destination.suburb(),
+    //                 serviceCode,
+    //                 e.getMessage(), e);
+    //         return null;
+    //     } catch (RuntimeException e) {
+    //         log.error("AusPost API call failed with runtime error. Request: from {} {} to {} {}. Service: {}. Error: {}", 
+    //                 origin.postcode(), origin.suburb(),
+    //                 destination.postcode(), destination.suburb(),
+    //                 serviceCode,
+    //                 e.getMessage(), e);
+    //         return null;
+    //     } catch (Exception e) {
+    //         log.error("AusPost API call failed with unexpected error. Request: from {} {} to {} {}. Service: {}. Error: {}", 
+    //                 origin.postcode(), origin.suburb(),
+    //                 destination.postcode(), destination.suburb(),
+    //                 serviceCode,
+    //                 e.getMessage(), e);
+    //         return null; // Return null to allow fallback to rules
+    //     }
+    // }
 
-    @SuppressWarnings("unchecked")
-    private CarrierQuote parseAusPostResponse(Map<String, Object> response, Packaging packaging, boolean isExpress) {
-        try {
-            log.debug("Parsing AusPost API response: {}", response);
-            Map<String, Object> postageResult = (Map<String, Object>) response.get("postage_result");
-            if (postageResult == null) {
-                log.error("AusPost response missing postage_result. Full response: {}", response);
-                return null;
-            }
+    // @SuppressWarnings("unchecked")
+    // private CarrierQuote parseAusPostResponse(Map<String, Object> response, Packaging packaging, boolean isExpress) {
+    //     try {
+    //         log.debug("Parsing AusPost API response: {}", response);
+    //         Map<String, Object> postageResult = (Map<String, Object>) response.get("postage_result");
+    //         if (postageResult == null) {
+    //             log.error("AusPost response missing postage_result. Full response: {}", response);
+    //             return null;
+    //         }
 
-            // Extract cost from "total_cost" (string format like "15.05")
-            Object costObj = postageResult.get("total_cost");
-            Double totalCost = costObj != null ? parseDouble(costObj) : null;
+    //         // Extract cost from "total_cost" (string format like "15.05")
+    //         Object costObj = postageResult.get("total_cost");
+    //         Double totalCost = costObj != null ? parseDouble(costObj) : null;
 
-            if (totalCost == null) {
-                log.error("AusPost response missing total_cost. postage_result: {}", postageResult);
-                return null;
-            }
+    //         if (totalCost == null) {
+    //             log.error("AusPost response missing total_cost. postage_result: {}", postageResult);
+    //             return null;
+    //         }
 
-            // Extract service name
-            String serviceName = extractString(postageResult, "service");
-            if (serviceName == null) {
-                serviceName = isExpress ? "Express Post" : "Parcel Post";
-            }
+    //         // Extract service name
+    //         String serviceName = extractString(postageResult, "service");
+    //         if (serviceName == null) {
+    //             serviceName = isExpress ? "Express Post" : "Parcel Post";
+    //         }
 
-            // Extract delivery time from string format like "Delivered in 4 business days"
-            // Try to parse the number(s) from the string
-            String deliveryTimeStr = extractString(postageResult, "delivery_time");
-            Integer etaMin = null;
-            Integer etaMax = null;
-            if (deliveryTimeStr != null) {
-                Integer[] etaDays = parseDaysFromDeliveryTimeString(deliveryTimeStr);
-                if (etaDays != null && etaDays.length == 2) {
-                    etaMin = etaDays[0];
-                    etaMax = etaDays[1];
-                } else if (etaDays != null && etaDays.length == 1) {
-                    etaMin = etaDays[0];
-                    etaMax = etaDays[0];
-                }
-            }
+    //         // Extract delivery time from string format like "Delivered in 4 business days"
+    //         // Try to parse the number(s) from the string
+    //         String deliveryTimeStr = extractString(postageResult, "delivery_time");
+    //         Integer etaMin = null;
+    //         Integer etaMax = null;
+    //         if (deliveryTimeStr != null) {
+    //             Integer[] etaDays = parseDaysFromDeliveryTimeString(deliveryTimeStr);
+    //             if (etaDays != null && etaDays.length == 2) {
+    //                 etaMin = etaDays[0];
+    //                 etaMax = etaDays[1];
+    //             } else if (etaDays != null && etaDays.length == 1) {
+    //                 etaMin = etaDays[0];
+    //                 etaMax = etaDays[0];
+    //             }
+    //         }
 
-            // Calculate delivery cost (total cost minus packaging cost)
-            double packagingCostAud = packaging.packagingCostAud();
-            double deliveryCost = totalCost - packagingCostAud;
-            double surcharges = 0.0; // AusPost may include surcharges in total_cost or separately
+    //         // Calculate delivery cost (total cost minus packaging cost)
+    //         double packagingCostAud = packaging.packagingCostAud();
+    //         double deliveryCost = totalCost - packagingCostAud;
+    //         double surcharges = 0.0; // AusPost may include surcharges in total_cost or separately
 
-            return new CarrierQuote(
-                    "AUSPOST",
-                    serviceName,
-                    etaMin != null ? etaMin : (isExpress ? 1 : 2),
-                    etaMax != null ? etaMax : (isExpress ? 3 : 6),
-                    packagingCostAud,
-                    deliveryCost,
-                    surcharges,
-                    totalCost,
-                    "AUSPOST_API",
-                    false, // ruleFallbackUsed
-                    null // rawCarrierRef - could extract from response if available
-            );
-        } catch (ClassCastException e) {
-            log.error("Failed to parse AusPost response: type casting error", e);
-            return null;
-        } catch (NullPointerException e) {
-            log.error("Failed to parse AusPost response: null pointer exception", e);
-            return null;
-        } catch (NumberFormatException e) {
-            log.error("Failed to parse AusPost response: number format error", e);
-            return null;
-        } catch (Exception e) {
-            log.error("Failed to parse AusPost response: unexpected error", e);
-            return null;
-        }
-    }
+    //         return new CarrierQuote(
+    //                 "AUSPOST",
+    //                 serviceName,
+    //                 etaMin != null ? etaMin : (isExpress ? 1 : 2),
+    //                 etaMax != null ? etaMax : (isExpress ? 3 : 6),
+    //                 packagingCostAud,
+    //                 deliveryCost,
+    //                 surcharges,
+    //                 totalCost,
+    //                 "AUSPOST_API",
+    //                 false, // ruleFallbackUsed
+    //                 null // rawCarrierRef - could extract from response if available
+    //         );
+    //     } catch (ClassCastException e) {
+    //         log.error("Failed to parse AusPost response: type casting error", e);
+    //         return null;
+    //     } catch (NullPointerException e) {
+    //         log.error("Failed to parse AusPost response: null pointer exception", e);
+    //         return null;
+    //     } catch (NumberFormatException e) {
+    //         log.error("Failed to parse AusPost response: number format error", e);
+    //         return null;
+    //     } catch (Exception e) {
+    //         log.error("Failed to parse AusPost response: unexpected error", e);
+    //         return null;
+    //     }
+    // }
 
     /**
      * Parses the number of days from AusPost delivery time string.
@@ -596,62 +571,72 @@ public class QuoteServiceImpl implements QuoteService {
      * "Delivered in 2-3 business days" -> returns array with [2, 3]
      * Returns null if parsing fails.
      */
-    private Integer[] parseDaysFromDeliveryTimeString(String deliveryTimeStr) {
-        if (deliveryTimeStr == null || deliveryTimeStr.isBlank()) {
-            return null;
+    // private Integer[] parseDaysFromDeliveryTimeString(String deliveryTimeStr) {
+    //     if (deliveryTimeStr == null || deliveryTimeStr.isBlank()) {
+    //         return null;
+    //     }
+
+    //     // First try to match range format: "Delivered in X-Y business days"
+    //     java.util.regex.Pattern rangePattern = java.util.regex.Pattern.compile("(\\d+)\\s*-\\s*(\\d+)");
+    //     java.util.regex.Matcher rangeMatcher = rangePattern.matcher(deliveryTimeStr);
+
+    //     if (rangeMatcher.find()) {
+    //         try {
+    //             int min = Integer.parseInt(rangeMatcher.group(1));
+    //             int max = Integer.parseInt(rangeMatcher.group(2));
+    //             return new Integer[]{min, max};
+    //         } catch (NumberFormatException e) {
+    //             log.debug("Failed to parse range from delivery time string: {}", deliveryTimeStr);
+    //         }
+    //     }
+
+    //     // Fallback to single number format: "Delivered in Z business days"
+    //     java.util.regex.Pattern singlePattern = java.util.regex.Pattern.compile("(\\d+)");
+    //     java.util.regex.Matcher singleMatcher = singlePattern.matcher(deliveryTimeStr);
+
+    //     if (singleMatcher.find()) {
+    //         try {
+    //             int days = Integer.parseInt(singleMatcher.group(1));
+    //             return new Integer[]{days, days};
+    //         } catch (NumberFormatException e) {
+    //             log.debug("Failed to parse days from delivery time string: {}", deliveryTimeStr);
+    //             return null;
+    //         }
+    //     }
+
+    //     return null;
+    // }
+
+    // private Double parseDouble(Object value) {
+    //     if (value == null) {
+    //         return null;
+    //     }
+    //     if (value instanceof Number number) {
+    //         return number.doubleValue();
+    //     }
+    //     if (value instanceof String str) {
+    //         try {
+    //             return Double.parseDouble(str);
+    //         } catch (NumberFormatException e) {
+    //             return null;
+    //         }
+    //     }
+    //     return null;
+    // }
+
+    // private String extractString(Map<String, Object> map, String key) {
+    //     Object value = map.get(key);
+    //     return value != null ? value.toString() : null;
+    // }
+
+    private String summarizeStackTrace(Throwable error) {
+        StackTraceElement[] stack = error.getStackTrace();
+        int limit = Math.min(stack.length, 10);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < limit; i++) {
+            builder.append(stack[i]).append(i == limit - 1 ? "" : " | ");
         }
-
-        // First try to match range format: "Delivered in X-Y business days"
-        java.util.regex.Pattern rangePattern = java.util.regex.Pattern.compile("(\\d+)\\s*-\\s*(\\d+)");
-        java.util.regex.Matcher rangeMatcher = rangePattern.matcher(deliveryTimeStr);
-
-        if (rangeMatcher.find()) {
-            try {
-                int min = Integer.parseInt(rangeMatcher.group(1));
-                int max = Integer.parseInt(rangeMatcher.group(2));
-                return new Integer[]{min, max};
-            } catch (NumberFormatException e) {
-                log.debug("Failed to parse range from delivery time string: {}", deliveryTimeStr);
-            }
-        }
-
-        // Fallback to single number format: "Delivered in Z business days"
-        java.util.regex.Pattern singlePattern = java.util.regex.Pattern.compile("(\\d+)");
-        java.util.regex.Matcher singleMatcher = singlePattern.matcher(deliveryTimeStr);
-
-        if (singleMatcher.find()) {
-            try {
-                int days = Integer.parseInt(singleMatcher.group(1));
-                return new Integer[]{days, days};
-            } catch (NumberFormatException e) {
-                log.debug("Failed to parse days from delivery time string: {}", deliveryTimeStr);
-                return null;
-            }
-        }
-
-        return null;
-    }
-
-    private Double parseDouble(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value instanceof String str) {
-            try {
-                return Double.parseDouble(str);
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private String extractString(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
+        return builder.toString();
     }
 
     private enum BracketState {

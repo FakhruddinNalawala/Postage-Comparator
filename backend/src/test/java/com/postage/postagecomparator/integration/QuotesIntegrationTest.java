@@ -27,7 +27,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @Import(QuotesIntegrationTest.WireMockConfig.class)
 @org.springframework.test.context.TestPropertySource(
-        properties = "spring.main.allow-bean-definition-overriding=true"
+        properties = {
+                "spring.main.allow-bean-definition-overriding=true",
+                "providers.auspost.enabled=true"
+        }
 )
 class QuotesIntegrationTest extends IntegrationTestBase {
 
@@ -165,7 +168,7 @@ class QuotesIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void quote_whenValidAndNoApiKey_usesRules() throws Exception {
+    void quote_whenValid_usesAusPostApiWhenKeyConfiguredOtherwiseRules() throws Exception {
         var ids = seedOriginItemAndPackaging();
 
         var request = new ShipmentRequest(
@@ -178,13 +181,23 @@ class QuotesIntegrationTest extends IntegrationTestBase {
                 false
         );
 
-        mockMvc.perform(post("/api/quotes")
+        var result = mockMvc.perform(post("/api/quotes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.carrierQuotes[0].pricingSource").value("RULES"))
-                .andExpect(jsonPath("$.carrierQuotes[0].ruleFallbackUsed").value(true));
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+
+        boolean hasAusPostKey = hasValue(System.getProperty("AUSPOST_API_KEY"))
+                || hasValue(System.getenv("AUSPOST_API_KEY"));
+        if (hasAusPostKey) {
+            result.andExpect(jsonPath("$.carrierQuotes[?(@.pricingSource == 'AUSPOST_API')]").isNotEmpty())
+                    .andExpect(jsonPath("$.carrierQuotes[?(@.pricingSource == 'AUSPOST_API')].ruleFallbackUsed")
+                            .value(false));
+        } else {
+            result.andExpect(jsonPath("$.carrierQuotes[?(@.pricingSource == 'RULES')]").isNotEmpty())
+                    .andExpect(jsonPath("$.carrierQuotes[?(@.pricingSource == 'RULES')].ruleFallbackUsed")
+                            .value(true));
+        }
     }
 
     @Test
@@ -207,8 +220,8 @@ class QuotesIntegrationTest extends IntegrationTestBase {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.carrierQuotes[0].pricingSource").value("AUSPOST_API"))
-                .andExpect(jsonPath("$.carrierQuotes[0].ruleFallbackUsed").value(false));
+                .andExpect(jsonPath("$.carrierQuotes[?(@.pricingSource == 'AUSPOST_API')]").isNotEmpty())
+                .andExpect(jsonPath("$.carrierQuotes[?(@.pricingSource == 'AUSPOST_API')].ruleFallbackUsed").value(false));
     }
 
     @Test
@@ -307,6 +320,10 @@ class QuotesIntegrationTest extends IntegrationTestBase {
     }
 
     private record SeededIds(String itemId, String packagingId) {
+    }
+
+    private boolean hasValue(String value) {
+        return value != null && !value.isBlank();
     }
 
     @TestConfiguration
