@@ -43,6 +43,12 @@ When an API is unavailable or fails for a carrier, the backend attempts to gener
 - **Controllers** implement the REST endpoints:
   - `POST /api/quotes` → `QuoteResult` with AusPost options when available.
 
+- **Provider SPI**:
+  - Providers implement `CarrierProvider` with:
+    - `quote(request, origin, packaging, items)` for a single best quote (optional).
+    - `quotes(request, origin, packaging, items)` for multiple quotes (optional).
+  - Providers may ignore `quotes` or return a list depending on provider capabilities.
+
 - **Service Flow for `/api/quotes`** (simplified):
 
   1. Validate `ShipmentRequest` (origin must be configured, item/packaging IDs must exist, quantities > 0).

@@ -147,6 +147,33 @@ public class SettingsServiceImpl implements SettingsService {
         return System.getenv("AUSPOST_API_KEY");
     }
 
+    @Override
+    public String getShippitApiKey() {
+        var property = System.getProperty("SHIPPIT_API_KEY");
+        if (property != null && !property.isBlank()) {
+            return property;
+        }
+        return System.getenv("SHIPPIT_API_KEY");
+    }
+
+    @Override
+    public String getShipStationApiKey() {
+        var property = System.getProperty("SHIPSTATION_API_KEY");
+        if (property != null && !property.isBlank()) {
+            return property;
+        }
+        return System.getenv("SHIPSTATION_API_KEY");
+    }
+
+    @Override
+    public String getAfterShipApiKey() {
+        var property = System.getProperty("AFTERSHIP_API_KEY");
+        if (property != null && !property.isBlank()) {
+            return property;
+        }
+        return System.getenv("AFTERSHIP_API_KEY");
+    }
+
     /*
     @Override
     public String getSendleApiKey() {

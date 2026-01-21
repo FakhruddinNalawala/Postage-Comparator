@@ -1,33 +1,25 @@
 package com.postage.postagecomparator.service;
 
 import com.postage.postagecomparator.model.*;
+import com.postage.postagecomparator.config.ProviderConfig;
+import com.postage.postagecomparator.provider.CarrierProvider;
+import com.postage.postagecomparator.provider.ProviderRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientException;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import org.springframework.web.util.UriBuilder;
-import reactor.core.publisher.Mono;
-
 import java.lang.reflect.Method;
-import java.net.URI;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class QuoteServiceImplTest {
@@ -41,17 +33,34 @@ class QuoteServiceImplTest {
     @Mock
     private PackagingService packagingService;
 
+    @Mock
+    private ProviderRegistry providerRegistry;
+
+    @Mock
+    private ProviderConfig providerConfig;
+
+    @Mock
+    private CarrierProvider ausPostProvider;
+
     // We don't exercise HTTP clients in these unit tests; APIs are disabled via missing keys.
     private QuoteServiceImpl quoteService;
 
     @BeforeEach
     void setUp() {
+        var requestHelper = new QuoteRequestHelper(settingsService, itemService, packagingService);
         quoteService = new QuoteServiceImpl(
-                null, // ausPostWebClient (unused when API keys are missing)
                 settingsService,
-                itemService,
-                packagingService
+                requestHelper,
+                providerRegistry,
+                providerConfig
         );
+        lenient().when(providerRegistry.getEnabledProviders(providerConfig))
+                .thenReturn(List.of(ausPostProvider));
+        lenient().when(ausPostProvider.getName()).thenReturn("auspost");
+        lenient().when(ausPostProvider.quote(any(), any(), any(), any()))
+                .thenReturn(Optional.empty());
+        lenient().when(ausPostProvider.quotes(any(), any(), any(), any()))
+                .thenReturn(Optional.empty());
     }
 
     // --- validateRequest via calculateQuote short-circuiting ---
@@ -227,9 +236,6 @@ class QuoteServiceImplTest {
         given(packagingService.findById("pack-1")).willReturn(Optional.of(packaging));
         given(itemService.findById("item-1")).willReturn(Optional.of(item));
 
-        // Disable external APIs so we exercise rules-based AusPost only.
-        given(settingsService.getAusPostApiKey()).willReturn(null);
-
         // Provide brackets that will match the 0.5kg actual weight and the volume-weight (250 kg)
         var weightBracket = new WeightBracket(0.0, 1.0, 10.0, 15.0);
         var volumeBracket = new WeightBracket(200.0, 300.0, 20.0, 25.0);
@@ -314,144 +320,6 @@ class QuoteServiceImplTest {
                 .hasRootCauseMessage("No bracket found");
     }
 
-    // --- AusPost API tests (Sendle disabled) ---
-
-    @Test
-    void tryAusPostApi_whenApiKeyPresent_andValidResponse_returnsQuote() throws Exception {
-        var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-
-        Map<String, Object> response = Map.of(
-                "postage_result", Map.of(
-                        "total_cost", "12.50",
-                        "service", "Parcel Post",
-                        "delivery_time", "Delivered in 2-3 business days"
-                )
-        );
-
-        var serviceWithWebClient = buildServiceWithAusPostResponse(response);
-        given(settingsService.getAusPostApiKey()).willReturn("key");
-
-        CarrierQuote quote = invokeTryAusPostApi(serviceWithWebClient, origin, destination, 500, packaging, false);
-
-        assertThat(quote).isNotNull();
-        assertThat(quote.carrier()).isEqualTo("AUSPOST");
-        assertThat(quote.pricingSource()).isEqualTo("AUSPOST_API");
-        assertThat(quote.deliveryEtaDaysMin()).isEqualTo(2);
-        assertThat(quote.deliveryEtaDaysMax()).isEqualTo(3);
-        assertThat(quote.totalCostAud()).isEqualTo(12.50);
-        assertThat(quote.deliveryCostAud()).isEqualTo(10.50);
-        assertThat(quote.packagingCostAud()).isEqualTo(2.0);
-    }
-
-    @Test
-    void tryAusPostApi_whenResponseMissingPostageResult_returnsNull() throws Exception {
-        var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-
-        var serviceWithWebClient = buildServiceWithAusPostResponse(Map.of());
-        given(settingsService.getAusPostApiKey()).willReturn("key");
-
-        CarrierQuote quote = invokeTryAusPostApi(serviceWithWebClient, origin, destination, 500, packaging, false);
-
-        assertThat(quote).isNull();
-    }
-
-    @Test
-    void tryAusPostApi_whenResponseNull_returnsNull() throws Exception {
-        var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-
-        var serviceWithWebClient = buildServiceWithAusPostResponse(null);
-        given(settingsService.getAusPostApiKey()).willReturn("key");
-
-        CarrierQuote quote = invokeTryAusPostApi(serviceWithWebClient, origin, destination, 500, packaging, false);
-
-        assertThat(quote).isNull();
-    }
-
-    @Test
-    void tryAusPostApi_whenWebClientResponseException_returnsNull() throws Exception {
-        var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-
-        var exception = WebClientResponseException.create(
-                500,
-                "Internal Server Error",
-                null,
-                null,
-                null
-        );
-        var serviceWithWebClient = buildServiceWithAusPostError(exception);
-        given(settingsService.getAusPostApiKey()).willReturn("key");
-
-        CarrierQuote quote = invokeTryAusPostApi(serviceWithWebClient, origin, destination, 500, packaging, false);
-
-        assertThat(quote).isNull();
-    }
-
-    @Test
-    void tryAusPostApi_whenWebClientException_returnsNull() throws Exception {
-        var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-
-        var serviceWithWebClient = buildServiceWithAusPostError(new WebClientException("timeout") {});
-        given(settingsService.getAusPostApiKey()).willReturn("key");
-
-        CarrierQuote quote = invokeTryAusPostApi(serviceWithWebClient, origin, destination, 500, packaging, false);
-
-        assertThat(quote).isNull();
-    }
-
-    @Test
-    void tryAusPostApi_whenRuntimeException_returnsNull() throws Exception {
-        var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-
-        var serviceWithWebClient = buildServiceWithAusPostError(new RuntimeException("boom"));
-        given(settingsService.getAusPostApiKey()).willReturn("key");
-
-        CarrierQuote quote = invokeTryAusPostApi(serviceWithWebClient, origin, destination, 500, packaging, false);
-
-        assertThat(quote).isNull();
-    }
-
-    @Test
-    void parseDaysFromDeliveryTimeString_handlesRangeSingleAndInvalid() throws Exception {
-        Method m = QuoteServiceImpl.class.getDeclaredMethod("parseDaysFromDeliveryTimeString", String.class);
-        m.setAccessible(true);
-
-        Integer[] range = (Integer[]) m.invoke(quoteService, "Delivered in 2-3 business days");
-        Integer[] single = (Integer[]) m.invoke(quoteService, "Delivered in 4 business days");
-        Integer[] invalid = (Integer[]) m.invoke(quoteService, "unknown");
-
-        assertThat(range).containsExactly(2, 3);
-        assertThat(single).containsExactly(4, 4);
-        assertThat(invalid).isNull();
-    }
-
-    @Test
-    void parseDouble_handlesNumberStringAndInvalid() throws Exception {
-        Method m = QuoteServiceImpl.class.getDeclaredMethod("parseDouble", Object.class);
-        m.setAccessible(true);
-
-        Double num = (Double) m.invoke(quoteService, 2.5);
-        Double str = (Double) m.invoke(quoteService, "3.75");
-        Double bad = (Double) m.invoke(quoteService, "not-a-number");
-        Double nullVal = (Double) m.invoke(quoteService, (Object) null);
-
-        assertThat(num).isEqualTo(2.5);
-        assertThat(str).isEqualTo(3.75);
-        assertThat(bad).isNull();
-        assertThat(nullVal).isNull();
-    }
-
     // --- Helper to invoke private rules-based method via reflection ---
 
     private CarrierQuote invokeAusPostRulesBased(OriginSettings origin,
@@ -471,71 +339,5 @@ class QuoteServiceImplTest {
         return (CarrierQuote) m.invoke(quoteService, origin, destination, totalWeightGrams, packaging, isExpress);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private QuoteServiceImpl buildServiceWithAusPostResponse(Map<String, Object> response) {
-        WebClient webClient = mock(WebClient.class);
-        WebClient.RequestHeadersUriSpec uriSpec = mock(WebClient.RequestHeadersUriSpec.class);
-        WebClient.RequestHeadersSpec headersSpec = mock(WebClient.RequestHeadersSpec.class);
-        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
-
-        when(webClient.get()).thenReturn(uriSpec);
-        when(uriSpec.uri(org.mockito.ArgumentMatchers.<Function<UriBuilder, URI>>any()))
-                .thenReturn(headersSpec);
-        when(headersSpec.header(anyString(), anyString()))
-                .thenReturn(headersSpec);
-        when(headersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.onStatus(any(), any())).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(Map.class))
-                .thenReturn(response == null ? Mono.empty() : Mono.just(response));
-
-        return new QuoteServiceImpl(
-                webClient,
-                settingsService,
-                itemService,
-                packagingService
-        );
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private QuoteServiceImpl buildServiceWithAusPostError(Throwable error) {
-        WebClient webClient = mock(WebClient.class);
-        WebClient.RequestHeadersUriSpec uriSpec = mock(WebClient.RequestHeadersUriSpec.class);
-        WebClient.RequestHeadersSpec headersSpec = mock(WebClient.RequestHeadersSpec.class);
-        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
-
-        when(webClient.get()).thenReturn(uriSpec);
-        when(uriSpec.uri(org.mockito.ArgumentMatchers.<Function<UriBuilder, URI>>any()))
-                .thenReturn(headersSpec);
-        when(headersSpec.header(anyString(), anyString()))
-                .thenReturn(headersSpec);
-        when(headersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.onStatus(any(), any())).thenReturn(responseSpec);
-        when(responseSpec.bodyToMono(Map.class)).thenReturn(Mono.error(error));
-
-        return new QuoteServiceImpl(
-                webClient,
-                settingsService,
-                itemService,
-                packagingService
-        );
-    }
-
-    private CarrierQuote invokeTryAusPostApi(QuoteServiceImpl service,
-                                             OriginSettings origin,
-                                             QuoteResult.Destination destination,
-                                             int totalWeightGrams,
-                                             Packaging packaging,
-                                             boolean isExpress) throws Exception {
-        Method m = QuoteServiceImpl.class.getDeclaredMethod(
-                "tryAusPostApi",
-                OriginSettings.class,
-                QuoteResult.Destination.class,
-                int.class,
-                Packaging.class,
-                boolean.class
-        );
-        m.setAccessible(true);
-        return (CarrierQuote) m.invoke(service, origin, destination, totalWeightGrams, packaging, isExpress);
-    }
 }
 
