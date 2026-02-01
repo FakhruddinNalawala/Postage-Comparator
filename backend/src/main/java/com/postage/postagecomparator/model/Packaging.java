@@ -19,10 +19,15 @@ public record Packaging(
 
         @Positive
         int widthCm,
-        
-        int internalVolumeCubicCm,
 
         @Positive
         double packagingCostAud
 ) {
+    /**
+     * Calculates the internal volume from the dimensions.
+     * @return the volume in cubic centimeters
+     */
+    public int volumeCubicCm() {
+        return lengthCm * heightCm * widthCm;
+    }
 }

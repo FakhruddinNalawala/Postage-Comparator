@@ -20,12 +20,20 @@ public record ShipmentRequest(
         @Pattern(regexp = "[A-Za-z]{2}", message = "Country must be 2 letters")
         String country,
 
-        @NotEmpty
+        @NotEmpty(message = "Please select at least one item")
         List<@Valid ShipmentItemSelection> items,
 
-        @NotBlank
-        String packagingId,
-
-        boolean isExpress
+        /**
+         * When true, only AusPost quotes will be returned.
+         * This is set when the destination is a PO Box or Parcel Locker,
+         * as other carriers cannot deliver to these addresses.
+         */
+        Boolean ausPostOnly
 ) {
+    /**
+     * Helper method to check if only AusPost should be used.
+     */
+    public boolean isAusPostOnly() {
+        return ausPostOnly != null && ausPostOnly;
+    }
 }

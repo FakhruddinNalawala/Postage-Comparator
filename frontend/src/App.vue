@@ -61,6 +61,9 @@ const itemForm = reactive<Omit<Item, 'id'>>({
   name: '',
   description: '',
   unitWeightGrams: 0,
+  lengthCm: 0,
+  heightCm: 0,
+  widthCm: 0,
 });
 
 const showPackagingModal = ref(false);
@@ -75,20 +78,19 @@ const packagingForm = reactive<Omit<Packaging, 'id'>>({
   lengthCm: 0,
   heightCm: 0,
   widthCm: 0,
-  internalVolumeCubicCm: 0,
   packagingCostAud: 0,
 });
 
 const quoteError = ref('');
 const isQuoteLoading = ref(false);
 const quoteForm = reactive({
+  fullAddress: '',
   destinationPostcode: '',
   destinationSuburb: '',
   destinationState: '',
   country: 'AU',
-  packagingId: '',
-  isExpress: false,
   items: [] as ShipmentItemSelection[],
+  isPoBoxOrParcelLocker: false,
 });
 
 const itemsEmpty = computed(() => items.value.length === 0);
@@ -110,6 +112,9 @@ function resetItemForm() {
   itemForm.name = '';
   itemForm.description = '';
   itemForm.unitWeightGrams = 0;
+  itemForm.lengthCm = 0;
+  itemForm.heightCm = 0;
+  itemForm.widthCm = 0;
 }
 
 function resetPackagingForm() {
@@ -118,7 +123,6 @@ function resetPackagingForm() {
   packagingForm.lengthCm = 0;
   packagingForm.heightCm = 0;
   packagingForm.widthCm = 0;
-  packagingForm.internalVolumeCubicCm = 0;
   packagingForm.packagingCostAud = 0;
 }
 
@@ -154,9 +158,6 @@ async function loadAll() {
     }
     items.value = await listItems();
     packagings.value = await listPackaging();
-    if (!quoteForm.packagingId && packagings.value.length > 0) {
-      quoteForm.packagingId = packagings.value[0].id;
-    }
     if (quoteForm.items.length === 0) {
       quoteForm.items.push({ itemId: '', quantity: 1 });
     }
@@ -231,6 +232,9 @@ function openItemModal(item?: Item) {
     itemForm.name = item.name ?? '';
     itemForm.description = item.description ?? '';
     itemForm.unitWeightGrams = item.unitWeightGrams ?? 0;
+    itemForm.lengthCm = item.lengthCm ?? 0;
+    itemForm.heightCm = item.heightCm ?? 0;
+    itemForm.widthCm = item.widthCm ?? 0;
   } else {
     editingItemId.value = null;
     resetItemForm();
@@ -266,6 +270,9 @@ async function saveItem() {
       name: itemForm.name.trim(),
       description: itemForm.description?.trim() || null,
       unitWeightGrams: Number(itemForm.unitWeightGrams),
+      lengthCm: Number(itemForm.lengthCm),
+      heightCm: Number(itemForm.heightCm),
+      widthCm: Number(itemForm.widthCm),
     };
     if (editingItemId.value) {
       await updateItem(editingItemId.value, payload);
@@ -312,7 +319,6 @@ function openPackagingModal(packaging?: Packaging) {
     packagingForm.lengthCm = packaging.lengthCm ?? 0;
     packagingForm.heightCm = packaging.heightCm ?? 0;
     packagingForm.widthCm = packaging.widthCm ?? 0;
-    packagingForm.internalVolumeCubicCm = packaging.internalVolumeCubicCm ?? 0;
     packagingForm.packagingCostAud = packaging.packagingCostAud ?? 0;
   } else {
     editingPackagingId.value = null;
@@ -331,7 +337,6 @@ async function savePackaging() {
       lengthCm: Number(packagingForm.lengthCm),
       heightCm: Number(packagingForm.heightCm),
       widthCm: Number(packagingForm.widthCm),
-      internalVolumeCubicCm: Number(packagingForm.internalVolumeCubicCm || 0),
       packagingCostAud: Number(packagingForm.packagingCostAud),
     };
     if (editingPackagingId.value) {
@@ -342,9 +347,6 @@ async function savePackaging() {
     isPackagingLoading.value = true;
     packagings.value = await listPackaging();
     showPackagingModal.value = false;
-    if (!quoteForm.packagingId && packagings.value.length > 0) {
-      quoteForm.packagingId = packagings.value[0].id;
-    }
   } catch (error) {
     packagingError.value = normalizeError(error);
   } finally {
@@ -359,9 +361,6 @@ async function removePackaging(id: string) {
   try {
     await deletePackaging(id);
     packagings.value = await listPackaging();
-    if (quoteForm.packagingId === id) {
-      quoteForm.packagingId = packagings.value[0]?.id ?? '';
-    }
   } catch (error) {
     loadError.value = normalizeError(error);
   } finally {
@@ -390,14 +389,13 @@ async function submitQuote() {
       destinationSuburb: quoteForm.destinationSuburb.trim(),
       destinationState: quoteForm.destinationState.trim(),
       country: quoteForm.country.trim(),
-      packagingId: quoteForm.packagingId,
-      isExpress: quoteForm.isExpress,
       items: quoteForm.items
         .filter((entry) => entry.itemId.trim())
         .map((entry) => ({
           itemId: entry.itemId,
           quantity: Number(entry.quantity),
         })),
+      ausPostOnly: quoteForm.isPoBoxOrParcelLocker,
     };
     quoteResult.value = await createQuote(payload);
   } catch (error) {
@@ -504,7 +502,7 @@ onMounted(loadAll);
     :error="settingsError"
     :settings-incomplete="settingsIncomplete"
     :loading="isSettingsLoading"
-    @close="showSettingsModal = !settingsIncomplete"
+    @close="showSettingsModal = settingsIncomplete"
     @save="saveSettings"
   />
 

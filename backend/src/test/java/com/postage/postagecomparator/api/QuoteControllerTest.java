@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.Instant;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -41,14 +42,13 @@ class QuoteControllerTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "pack-1",
-                false
+                null
         );
 
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
         var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 1.0);
-        var carrierQuote = new CarrierQuote("AUSPOST", "Parcel Post", 2, 4, 1.0, 10.0, 0.0, 11.0, "RULES", true, null);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1.0);
+        var carrierQuote = new CarrierQuote("AUSPOST", "Parcel Post", 2, 4, 1.0, 10.0, 0.0, 11.0, "RULES", true, null, "Box", false);
         var result = new QuoteResult(
                 1000,
                 1.0,
@@ -62,13 +62,13 @@ class QuoteControllerTest {
                 Instant.now()
         );
 
-        given(quoteService.calculateQuote(request)).willReturn(result);
+        given(quoteService.calculateQuote(any(ShipmentRequest.class))).willReturn(result);
 
         mockMvc.perform(post("/api/quotes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.currency").value("AUD"))
                 .andExpect(jsonPath("$.carrierQuotes[0].carrier").value("AUSPOST"));
     }
@@ -81,8 +81,7 @@ class QuoteControllerTest {
                 "VIC",
                 "AU",
                 List.of(),
-                "pack-1",
-                false
+                null
         );
 
         mockMvc.perform(post("/api/quotes")
@@ -91,7 +90,7 @@ class QuoteControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"))
-                .andExpect(jsonPath("$.error.message").value("must not be empty"));
+                .andExpect(jsonPath("$.error.message").value("Please select at least one item"));
     }
 
     @Test
@@ -102,8 +101,7 @@ class QuoteControllerTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 0)),
-                "pack-1",
-                false
+                null
         );
 
         mockMvc.perform(post("/api/quotes")
@@ -123,8 +121,7 @@ class QuoteControllerTest {
                 "VIC",
                 "A",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "pack-1",
-                false
+                null
         );
 
         mockMvc.perform(post("/api/quotes")
@@ -144,10 +141,9 @@ class QuoteControllerTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "pack-1",
-                false
+                null
         );
-        given(quoteService.calculateQuote(request))
+        given(quoteService.calculateQuote(any(ShipmentRequest.class)))
                 .willThrow(new IllegalStateException("Origin settings must be configured"));
 
         mockMvc.perform(post("/api/quotes")

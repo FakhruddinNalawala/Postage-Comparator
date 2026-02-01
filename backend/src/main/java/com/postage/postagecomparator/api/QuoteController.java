@@ -4,6 +4,7 @@ import com.postage.postagecomparator.model.QuoteResult;
 import com.postage.postagecomparator.model.ShipmentRequest;
 import com.postage.postagecomparator.service.QuoteService;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,10 +21,13 @@ public class QuoteController {
         this.quoteService = quoteService;
     }
 
-    @PostMapping
+    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<QuoteResult> createQuote(@RequestBody @Valid ShipmentRequest request) {
         QuoteResult result = quoteService.calculateQuote(request);
-        return ResponseEntity.ok(result);
+        return ResponseEntity
+                .ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(result);
     }
 
 }

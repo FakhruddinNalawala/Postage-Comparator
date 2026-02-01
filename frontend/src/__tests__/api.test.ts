@@ -71,7 +71,7 @@ describe('api client', () => {
   });
 
   it('sends request bodies and parses JSON', async () => {
-    const itemPayload = { name: 'Widget', description: 'Test', unitWeightGrams: 250 };
+    const itemPayload = { name: 'Widget', description: 'Test', unitWeightGrams: 250, lengthCm: 10, heightCm: 20, widthCm: 30 };
     mockFetch.mockResolvedValueOnce(jsonResponse({ id: 'item-1', ...itemPayload }));
     const createdItem = await createItem(itemPayload);
     expect(createdItem.id).toBe('item-1');
@@ -100,30 +100,28 @@ describe('api client', () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(jsonResponse([]))
-      .mockResolvedValueOnce(jsonResponse({ id: 'item-1', name: 'A', unitWeightGrams: 1 }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'item-1', name: 'B', unitWeightGrams: 2 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'item-1', name: 'A', unitWeightGrams: 1, lengthCm: 1, heightCm: 1, widthCm: 1 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'item-1', name: 'B', unitWeightGrams: 2, lengthCm: 2, heightCm: 2, widthCm: 2 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'pack-1', name: 'Box', lengthCm: 1, widthCm: 1, heightCm: 1, internalVolumeCubicCm: 1, packagingCostAud: 1 }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'pack-1', name: 'Box', lengthCm: 2, widthCm: 2, heightCm: 2, internalVolumeCubicCm: 8, packagingCostAud: 2 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'pack-1', name: 'Box', lengthCm: 1, widthCm: 1, heightCm: 1, packagingCostAud: 1 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'pack-1', name: 'Box', lengthCm: 2, widthCm: 2, heightCm: 2, packagingCostAud: 2 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(jsonResponse({ totalWeightGrams: 1, weightInKg: 0.001, volumeWeightInKg: 0.001, totalVolumeCubicCm: 1, origin: { postcode: '2000', suburb: 'Sydney', state: 'NSW', country: 'AU' }, destination: { postcode: '3000', suburb: 'Melbourne', state: 'VIC', country: 'AU' }, packaging: { id: 'pack-1', name: 'Box', packagingCostAud: 1 }, carrierQuotes: [], currency: 'AUD', generatedAt: '2025-01-01T00:00:00Z' }));
 
     await listItems();
     await listPackaging();
-    await updateItem('item-1', { name: 'A', description: null, unitWeightGrams: 1 });
-    await updateItem('item-1', { name: 'B', description: null, unitWeightGrams: 2 });
+    await updateItem('item-1', { name: 'A', description: null, unitWeightGrams: 1, lengthCm: 1, heightCm: 1, widthCm: 1 });
+    await updateItem('item-1', { name: 'B', description: null, unitWeightGrams: 2, lengthCm: 2, heightCm: 2, widthCm: 2 });
     await deleteItem('item-1');
-    await createPackaging({ name: 'Box', description: null, lengthCm: 1, widthCm: 1, heightCm: 1, internalVolumeCubicCm: 1, packagingCostAud: 1 });
-    await updatePackaging('pack-1', { name: 'Box', description: null, lengthCm: 2, widthCm: 2, heightCm: 2, internalVolumeCubicCm: 8, packagingCostAud: 2 });
+    await createPackaging({ name: 'Box', description: null, lengthCm: 1, widthCm: 1, heightCm: 1, packagingCostAud: 1 });
+    await updatePackaging('pack-1', { name: 'Box', description: null, lengthCm: 2, widthCm: 2, heightCm: 2, packagingCostAud: 2 });
     await deletePackaging('pack-1');
     await createQuote({
       destinationPostcode: '3000',
       destinationSuburb: 'Melbourne',
       destinationState: 'VIC',
       country: 'AU',
-      items: [{ itemId: 'item-1', quantity: 1 }],
-      packagingId: 'pack-1',
-      isExpress: false
+      items: [{ itemId: 'item-1', quantity: 1 }]
     });
 
     expect(mockFetch).toHaveBeenCalled();

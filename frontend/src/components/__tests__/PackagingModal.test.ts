@@ -14,7 +14,6 @@ describe('PackagingModal', () => {
           lengthCm: 1,
           widthCm: 1,
           heightCm: 1,
-          internalVolumeCubicCm: 1,
           packagingCostAud: 1
         },
         error: '',
@@ -41,7 +40,6 @@ describe('PackagingModal', () => {
           lengthCm: 1,
           widthCm: 1,
           heightCm: 1,
-          internalVolumeCubicCm: 1,
           packagingCostAud: 1
         },
         error: 'Invalid packaging',

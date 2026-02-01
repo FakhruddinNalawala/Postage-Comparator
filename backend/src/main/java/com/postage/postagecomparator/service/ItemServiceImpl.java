@@ -62,11 +62,21 @@ public class ItemServiceImpl implements ItemService {
         if (item.unitWeightGrams() <= 0) {
             throw new BadRequestException("Item unit weight must be greater than 0");
         }
+        if (item.lengthCm() <= 0 || item.heightCm() <= 0 || item.widthCm() <= 0) {
+            throw new BadRequestException("Item dimensions (length, height, width) must be greater than 0");
+        }
         var items = listAllItems();
         if (items.stream().anyMatch(checkItem -> checkItem.name().equals(item.name()))) {
             throw new BadRequestException("Item with name " + item.name() + " already exists");
         }
-        var newItem = new Item(generateItemId(), item.name(), item.description(), item.unitWeightGrams());
+        var newItem = new Item(
+                generateItemId(),
+                item.name(),
+                item.description(),
+                item.unitWeightGrams(),
+                item.lengthCm(),
+                item.heightCm(),
+                item.widthCm());
         items.add(newItem);
         saveItems(items);
         return newItem;
@@ -108,7 +118,10 @@ public class ItemServiceImpl implements ItemService {
                 existing.id(),
                 item.name() != null && !item.name().isBlank() ? item.name() : existing.name(),
                 item.description() != null ? item.description() : existing.description(),
-                item.unitWeightGrams() > 0 ? item.unitWeightGrams() : existing.unitWeightGrams()
+                item.unitWeightGrams() > 0 ? item.unitWeightGrams() : existing.unitWeightGrams(),
+                item.lengthCm() > 0 ? item.lengthCm() : existing.lengthCm(),
+                item.heightCm() > 0 ? item.heightCm() : existing.heightCm(),
+                item.widthCm() > 0 ? item.widthCm() : existing.widthCm()
         );
         items.set(existingIndex, updated);
         saveItems(items);

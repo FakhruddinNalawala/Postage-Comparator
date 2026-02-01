@@ -89,12 +89,12 @@ class AramexProviderTest {
         System.setProperty("ARAMEX_USERNAME", "");
         System.setProperty("ARAMEX_PASSWORD", "");
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         var provider = buildProviderWithoutStubs();
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }
@@ -113,8 +113,8 @@ class AramexProviderTest {
                 """;
 
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         setAramexProps();
         var provider = buildProviderWithResponse(responseXml);
@@ -122,7 +122,7 @@ class AramexProviderTest {
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }
@@ -140,8 +140,8 @@ class AramexProviderTest {
                 """;
 
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         setAramexProps();
         var provider = buildProviderWithResponse(responseXml);
@@ -149,7 +149,7 @@ class AramexProviderTest {
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }
@@ -167,8 +167,8 @@ class AramexProviderTest {
                 """;
 
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         setAramexProps();
         var provider = buildProviderWithResponse(responseXml);
@@ -176,18 +176,20 @@ class AramexProviderTest {
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isPresent();
-        assertThat(quote.get().totalCostAud()).isEqualTo(15.25);
+        assertThat(quote.get().deliveryCostAud()).isEqualTo(15.25);
+        assertThat(quote.get().packagingCostAud()).isEqualTo(2.0);
+        assertThat(quote.get().totalCostAud()).isEqualTo(17.25);
         assertThat(quote.get().pricingSource()).isEqualTo("ARAMEX_API");
     }
 
     @Test
     void quote_whenWebClientResponseException_returnsEmpty() {
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         var exception = WebClientResponseException.create(
                 500,
@@ -202,7 +204,7 @@ class AramexProviderTest {
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }
@@ -210,8 +212,8 @@ class AramexProviderTest {
     @Test
     void quote_whenWebClientException_returnsEmpty() {
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         setAramexProps();
         var provider = buildProviderWithError(new WebClientException("timeout") {});
@@ -219,7 +221,7 @@ class AramexProviderTest {
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }

@@ -53,7 +53,8 @@ public class AusPostProvider implements CarrierProvider {
     public Optional<List<CarrierQuote>> quotes(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items) {
+            List<Item> items,
+            boolean isExpress) {
         return Optional.of(List.of());
     }
 
@@ -61,7 +62,8 @@ public class AusPostProvider implements CarrierProvider {
     public Optional<CarrierQuote> quote(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items) {
+            List<Item> items,
+            boolean isExpress) {
 
         String apiKey = settingsService.getAusPostApiKey();
         if (apiKey == null || apiKey.isBlank()) {
@@ -71,7 +73,6 @@ public class AusPostProvider implements CarrierProvider {
 
         QuoteResult.Destination destination = requestHelper.buildDestination(request);
         int totalWeightGrams = requestHelper.calculateTotalWeight(request.items());
-        boolean isExpress = request.isExpress();
 
         String uriAusPostCalculate = "/postage/parcel/domestic/calculate.json";
         String serviceCode = isExpress ? "AUS_PARCEL_EXPRESS" : "AUS_PARCEL_REGULAR";
@@ -188,11 +189,11 @@ public class AusPostProvider implements CarrierProvider {
                 return null;
             }
 
-            // Extract cost from "total_cost" (string format like "15.05")
+            // Extract cost from "total_cost" – AusPost API returns postage/delivery cost only
             Object costObj = postageResult.get("total_cost");
-            Double totalCost = costObj != null ? parseDouble(costObj) : null;
+            Double deliveryCostFromApi = costObj != null ? parseDouble(costObj) : null;
 
-            if (totalCost == null) {
+            if (deliveryCostFromApi == null) {
                 log.error("AusPost response missing total_cost. postage_result: {}", postageResult);
                 return null;
             }
@@ -219,10 +220,11 @@ public class AusPostProvider implements CarrierProvider {
                 }
             }
 
-            // Calculate delivery cost (total cost minus packaging cost)
+            // API returns delivery cost only; add our packaging cost to get quote total
             double packagingCostAud = packaging.packagingCostAud();
-            double deliveryCost = totalCost - packagingCostAud;
-            double surcharges = 0.0; // AusPost may include surcharges in total_cost or separately
+            double deliveryCost = deliveryCostFromApi;
+            double surcharges = 0.0;
+            double totalCostAud = deliveryCost + packagingCostAud + surcharges;
 
             return new CarrierQuote(
                     "AUSPOST",
@@ -232,10 +234,12 @@ public class AusPostProvider implements CarrierProvider {
                     packagingCostAud,
                     deliveryCost,
                     surcharges,
-                    totalCost,
+                    totalCostAud,
                     "AUSPOST_API",
                     false, // ruleFallbackUsed
-                    null // rawCarrierRef - could extract from response if available
+                    null, // rawCarrierRef - could extract from response if available
+                    null, // packagingName - set by caller
+                    false // isExpress - set by caller
             );
         } catch (ClassCastException e) {
             log.error("Failed to parse AusPost response: type casting error", e);

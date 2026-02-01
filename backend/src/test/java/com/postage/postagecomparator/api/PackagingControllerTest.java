@@ -43,7 +43,7 @@ class PackagingControllerTest {
 
     @Test
     void list_returnsPackagingsFromService() throws Exception {
-        var packaging = new Packaging("id-1", "Box", "Desc", 10, 10, 10, 1000, 1.0);
+        var packaging = new Packaging("id-1", "Box", "Desc", 10, 10, 10, 1.0);
         given(packagingService.findAll()).willReturn(List.of(packaging));
 
         mockMvc.perform(get("/api/packaging"))
@@ -55,7 +55,7 @@ class PackagingControllerTest {
 
     @Test
     void get_whenPackagingExists_returns200() throws Exception {
-        var packaging = new Packaging("id-1", "Box", "Desc", 10, 10, 10, 1000, 1.0);
+        var packaging = new Packaging("id-1", "Box", "Desc", 10, 10, 10, 1.0);
         given(packagingService.findById("id-1")).willReturn(Optional.of(packaging));
 
         mockMvc.perform(get("/api/packaging/{id}", "id-1"))
@@ -75,8 +75,8 @@ class PackagingControllerTest {
 
     @Test
     void create_whenValid_returns201AndBody() throws Exception {
-        var request = new Packaging(null, "Box", "Desc", 10, 10, 10, 1000, 1.0);
-        var created = new Packaging("id-1", "Box", "Desc", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Desc", 10, 10, 10, 1.0);
+        var created = new Packaging("id-1", "Box", "Desc", 10, 10, 10, 1.0);
         given(packagingService.create(any(Packaging.class))).willReturn(created);
 
         mockMvc.perform(post("/api/packaging")
@@ -90,7 +90,7 @@ class PackagingControllerTest {
 
     @Test
     void create_whenLengthInvalid_returns400() throws Exception {
-        var request = new Packaging(null, "Box", "Desc", 0, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Desc", 0, 10, 10, 1.0);
 
         mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -103,7 +103,7 @@ class PackagingControllerTest {
 
     @Test
     void update_whenSpuriousId_returns404() throws Exception {
-        var request = new Packaging(null, "Box", "Desc", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Desc", 10, 10, 10, 1.0);
         given(packagingService.update(eq("missing-id"), any(Packaging.class)))
                 .willThrow(new NotFoundException("Packaging with id missing-id not found"));
 
@@ -118,7 +118,7 @@ class PackagingControllerTest {
 
     @Test
     void update_whenBlankId_returns400() throws Exception {
-        var request = new Packaging(null, "Box", "Desc", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Desc", 10, 10, 10, 1.0);
         given(packagingService.update(eq(" "), any(Packaging.class)))
                 .willThrow(new BadRequestException("id must not be null or blank"));
 

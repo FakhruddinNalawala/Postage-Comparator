@@ -56,8 +56,9 @@ public class ShippitProvider implements CarrierProvider {
     public Optional<CarrierQuote> quote(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items) {
-        Optional<List<CarrierQuote>> quotes = quotes(request, origin, packaging, items);
+            List<Item> items,
+            boolean isExpress) {
+        Optional<List<CarrierQuote>> quotes = quotes(request, origin, packaging, items, isExpress);
         return quotes.flatMap(list -> list.stream()
                 .min(java.util.Comparator.comparingDouble(CarrierQuote::totalCostAud)));
     }
@@ -66,7 +67,8 @@ public class ShippitProvider implements CarrierProvider {
     public Optional<List<CarrierQuote>> quotes(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items) {
+            List<Item> items,
+            boolean isExpress) {
 
         String apiKey = settingsService.getShippitApiKey();
         if (apiKey == null || apiKey.isBlank()) {
@@ -76,7 +78,6 @@ public class ShippitProvider implements CarrierProvider {
 
         QuoteResult.Destination destination = requestHelper.buildDestination(request);
         int totalWeightGrams = requestHelper.calculateTotalWeight(request.items());
-        boolean isExpress = request.isExpress();
         int totalQuantity = request.items().stream()
                 .mapToInt(ShipmentItemSelection::quantity)
                 .sum();
@@ -246,8 +247,8 @@ public class ShippitProvider implements CarrierProvider {
                         continue;
                     }
                     Map<String, Object> quoteMap = (Map<String, Object>) quoteMapRaw;
-                    Double totalCost = parseDouble(quoteMap.get("price"));
-                    if (totalCost == null || totalCost <= 0) {
+                    Double deliveryCostFromApi = parseDouble(quoteMap.get("price"));
+                    if (deliveryCostFromApi == null || deliveryCostFromApi <= 0) {
                         continue;
                     }
 
@@ -274,8 +275,9 @@ public class ShippitProvider implements CarrierProvider {
                     }
 
                     double packagingCostAud = packaging.packagingCostAud();
-                    double deliveryCost = totalCost - packagingCostAud;
+                    double deliveryCost = deliveryCostFromApi;
                     double surcharges = 0.0;
+                    double totalCostAud = deliveryCost + packagingCostAud + surcharges;
 
                     carrierQuotes.add(new CarrierQuote(
                             "SHIPPIT",
@@ -285,10 +287,12 @@ public class ShippitProvider implements CarrierProvider {
                             packagingCostAud,
                             deliveryCost,
                             surcharges,
-                            totalCost,
+                            totalCostAud,
                             "SHIPPIT_API",
                             false,
-                            null
+                            null, // rawCarrierRef
+                            null, // packagingName - set by caller
+                            false // isExpress - set by caller
                     ));
                 }
             }

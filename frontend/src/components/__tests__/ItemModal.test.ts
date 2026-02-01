@@ -8,7 +8,7 @@ describe('ItemModal', () => {
       props: {
         show: true,
         editing: true,
-        form: { name: 'Widget', description: null, unitWeightGrams: 100 },
+        form: { name: 'Widget', description: null, unitWeightGrams: 100, lengthCm: 10, heightCm: 20, widthCm: 30 },
         error: '',
         loading: false
       }
@@ -27,7 +27,7 @@ describe('ItemModal', () => {
       props: {
         show: true,
         editing: false,
-        form: { name: '', description: null, unitWeightGrams: 1 },
+        form: { name: '', description: null, unitWeightGrams: 1, lengthCm: 1, heightCm: 1, widthCm: 1 },
         error: 'Invalid item',
         loading: true
       }

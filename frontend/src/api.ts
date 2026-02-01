@@ -12,6 +12,9 @@ export interface Item {
   name: string;
   description?: string | null;
   unitWeightGrams: number;
+  lengthCm: number;
+  heightCm: number;
+  widthCm: number;
 }
 
 export interface Packaging {
@@ -21,7 +24,6 @@ export interface Packaging {
   lengthCm: number;
   heightCm: number;
   widthCm: number;
-  internalVolumeCubicCm: number;
   packagingCostAud: number;
 }
 
@@ -36,8 +38,7 @@ export interface ShipmentRequest {
   destinationState?: string | null;
   country: string;
   items: ShipmentItemSelection[];
-  packagingId: string;
-  isExpress: boolean;
+  ausPostOnly?: boolean;
 }
 
 export interface CarrierQuote {
@@ -52,6 +53,8 @@ export interface CarrierQuote {
   pricingSource: string;
   ruleFallbackUsed: boolean;
   rawCarrierRef?: string | null;
+  packagingName?: string | null;
+  isExpress: boolean;
 }
 
 export interface QuoteResult {

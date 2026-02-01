@@ -36,6 +36,18 @@ const emit = defineEmits<{
           Unit weight (grams)
           <input type="number" min="1" v-model.number="form.unitWeightGrams" />
         </label>
+        <label>
+          Length (cm)
+          <input type="number" min="1" v-model.number="form.lengthCm" />
+        </label>
+        <label>
+          Width (cm)
+          <input type="number" min="1" v-model.number="form.widthCm" />
+        </label>
+        <label>
+          Height (cm)
+          <input type="number" min="1" v-model.number="form.heightCm" />
+        </label>
       </div>
       <p v-if="error" class="error-text">{{ error }}</p>
       <div class="form-actions">

@@ -3,18 +3,18 @@ import { mount } from '@vue/test-utils';
 import QuotePanel from '../QuotePanel.vue';
 
 const baseProps = {
-  items: [{ id: 'item-1', name: 'Widget', description: null, unitWeightGrams: 100 }],
-  packagings: [{ id: 'pack-1', name: 'Box', description: null, lengthCm: 1, widthCm: 1, heightCm: 1, internalVolumeCubicCm: 1, packagingCostAud: 1 }],
+  items: [{ id: 'item-1', name: 'Widget', description: null, unitWeightGrams: 100, lengthCm: 10, heightCm: 20, widthCm: 30 }],
+  packagings: [{ id: 'pack-1', name: 'Box', description: null, lengthCm: 1, widthCm: 1, heightCm: 1, packagingCostAud: 1 }],
   canQuote: true,
   isLoading: false,
   quoteForm: {
+    fullAddress: '',
     destinationPostcode: '',
     destinationSuburb: '',
     destinationState: '',
     country: 'AU',
-    packagingId: 'pack-1',
-    isExpress: false,
-    items: [{ itemId: 'item-1', quantity: 1 }]
+    items: [{ itemId: 'item-1', quantity: 1 }],
+    isPoBoxOrParcelLocker: false
   },
   quoteError: '',
   quoteResult: null,
@@ -40,7 +40,7 @@ describe('QuotePanel', () => {
     expect(wrapper.emitted('remove-line')?.[0]).toEqual([0]);
   });
 
-  it('renders quote results with formatted fields', () => {
+  it('renders quote results with formatted fields', async () => {
     const wrapper = mount(QuotePanel, {
       props: {
         ...baseProps,
@@ -61,8 +61,9 @@ describe('QuotePanel', () => {
               packagingCostAud: 1,
               deliveryCostAud: 10,
               totalCostAud: 11,
-              pricingSource: 'AUSPOST_API',
-              ruleFallbackUsed: false
+              pricingSource: 'AusPost API',
+              ruleFallbackUsed: false,
+              isExpress: false
             },
             {
               carrier: 'AUSPOST',
@@ -73,7 +74,8 @@ describe('QuotePanel', () => {
               deliveryCostAud: 12,
               totalCostAud: 13,
               pricingSource: 'RULES',
-              ruleFallbackUsed: true
+              ruleFallbackUsed: true,
+              isExpress: true
             }
           ],
           currency: 'AUD',
@@ -85,11 +87,14 @@ describe('QuotePanel', () => {
 
     const text = wrapper.text();
     expect(text).toContain('Total weight: 500 g (0.5 kg)');
-    expect(text).toContain('Volume weight: 1.2 kg');
+    expect(text).toContain('Volume weight (primary packaging): 1.2 kg');
     expect(text).toContain('Source: AusPost API');
-    expect(text).toContain('Source: RULES');
     expect(text).toContain('ETA: 2–4 days');
-    expect(text).toContain('ETA: 1 days');
+
+    await wrapper.find('.tab-btn:last-child').trigger('click');
+    const expressText = wrapper.text();
+    expect(expressText).toContain('Source: RULES');
+    expect(expressText).toContain('ETA: 1 days');
   });
 
   it('renders ETA unavailable when format returns placeholder', () => {
@@ -114,7 +119,8 @@ describe('QuotePanel', () => {
               deliveryCostAud: 10,
               totalCostAud: 11,
               pricingSource: 'RULES',
-              ruleFallbackUsed: true
+              ruleFallbackUsed: true,
+              isExpress: false
             }
           ],
           currency: 'AUD',

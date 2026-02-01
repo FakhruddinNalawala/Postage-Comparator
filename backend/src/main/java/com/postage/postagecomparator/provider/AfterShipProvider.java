@@ -71,8 +71,9 @@ public class AfterShipProvider implements CarrierProvider {
     public Optional<CarrierQuote> quote(ShipmentRequest request,
                                         OriginSettings origin,
                                         Packaging packaging,
-                                        List<Item> items) {
-        return quotes(request, origin, packaging, items)
+                                        List<Item> items,
+                                        boolean isExpress) {
+        return quotes(request, origin, packaging, items, isExpress)
                 .flatMap(list -> list.stream().min(java.util.Comparator.comparingDouble(CarrierQuote::totalCostAud)));
     }
 
@@ -80,7 +81,8 @@ public class AfterShipProvider implements CarrierProvider {
     public Optional<List<CarrierQuote>> quotes(ShipmentRequest request,
                                                OriginSettings origin,
                                                Packaging packaging,
-                                               List<Item> items) {
+                                               List<Item> items,
+                                               boolean isExpress) {
         String apiKey = settingsService.getAfterShipApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             log.info("AfterShip API key not configured, skipping API call and using rules-based pricing");
@@ -94,7 +96,6 @@ public class AfterShipProvider implements CarrierProvider {
                 .sum());
 
         // AfterShip expects a shipment object containing ship_from, ship_to, and parcels.
-        // TODO: confirm address and parcel schema details against AfterShip's model docs.
         Map<String, Object> shipFrom = Map.of(
                 "city", nullToEmpty(origin.suburb()),
                 "state", nullToEmpty(origin.state()),
@@ -230,7 +231,8 @@ public class AfterShipProvider implements CarrierProvider {
                 Integer etaMax = null;
 
                 double packagingCost = packaging.packagingCostAud();
-                double deliveryCost = totalCharge.amount() - packagingCost;
+                double deliveryCost = totalCharge.amount();
+                double totalCostAud = deliveryCost + packagingCost;
 
                 quotes.add(new CarrierQuote(
                         "AFTERSHIP",
@@ -240,10 +242,12 @@ public class AfterShipProvider implements CarrierProvider {
                         packagingCost,
                         deliveryCost,
                         0.0,
-                        totalCharge.amount(),
+                        totalCostAud,
                         "AFTERSHIP_API",
                         false,
-                        null
+                        null, // rawCarrierRef
+                        null, // packagingName - set by caller
+                        false // isExpress - set by caller
                 ));
             }
             return quotes;

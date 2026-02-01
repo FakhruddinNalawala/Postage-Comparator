@@ -45,10 +45,6 @@ const emit = defineEmits<{
           <input type="number" min="1" v-model.number="form.heightCm" />
         </label>
         <label>
-          Internal volume (cm³)
-          <input type="number" min="0" v-model.number="form.internalVolumeCubicCm" />
-        </label>
-        <label>
           Packaging cost (AUD)
           <input type="number" min="0" step="0.01" v-model.number="form.packagingCostAud" />
         </label>

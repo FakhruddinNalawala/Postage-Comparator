@@ -83,13 +83,13 @@ class ShipStationProviderTest {
     @Test
     void quotes_whenApiKeyMissing_returnsEmpty() {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 2.0);
+        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), null);
 
         var provider = buildProviderWithoutStubs();
         given(settingsService.getShipStationApiKey()).willReturn(" ");
 
-        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of());
+        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of(), false);
 
         assertThat(quotes).isEmpty();
     }
@@ -97,8 +97,8 @@ class ShipStationProviderTest {
     @Test
     void quotes_whenValidResponse_mapsQuotes() {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 2.0);
+        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), null);
 
         List<Map<String, Object>> response = List.of(
                 Map.of(
@@ -119,7 +119,7 @@ class ShipStationProviderTest {
                 .willReturn(new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(500);
 
-        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of());
+        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of(), false);
 
         assertThat(quotes).isPresent();
         assertThat(quotes.get()).hasSize(2);
@@ -129,8 +129,8 @@ class ShipStationProviderTest {
     @Test
     void quote_whenMultipleRates_returnsCheapest() {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 2.0);
+        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), null);
 
         List<Map<String, Object>> response = List.of(
                 Map.of(
@@ -151,17 +151,19 @@ class ShipStationProviderTest {
                 .willReturn(new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(500);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isPresent();
-        assertThat(quote.get().totalCostAud()).isEqualTo(8.0);
+        assertThat(quote.get().deliveryCostAud()).isEqualTo(8.0);
+        assertThat(quote.get().packagingCostAud()).isEqualTo(2.0);
+        assertThat(quote.get().totalCostAud()).isEqualTo(10.0);
     }
 
     @Test
     void quotes_whenWebClientResponseException_returnsEmpty() {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 2.0);
+        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), null);
 
         var exception = WebClientResponseException.create(
                 500,
@@ -176,7 +178,7 @@ class ShipStationProviderTest {
                 .willReturn(new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(500);
 
-        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of());
+        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of(), false);
 
         assertThat(quotes).isEmpty();
     }
@@ -184,8 +186,8 @@ class ShipStationProviderTest {
     @Test
     void quotes_whenWebClientException_returnsEmpty() {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 2.0);
-        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 2.0);
+        var request = new ShipmentRequest("3000", "Melbourne", "VIC", "AU", List.of(), null);
 
         var provider = buildProviderWithError(new WebClientException("timeout") {});
         given(settingsService.getShipStationApiKey()).willReturn("key");
@@ -193,7 +195,7 @@ class ShipStationProviderTest {
                 .willReturn(new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(500);
 
-        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of());
+        Optional<List<CarrierQuote>> quotes = provider.quotes(request, origin, packaging, List.of(), false);
 
         assertThat(quotes).isEmpty();
     }

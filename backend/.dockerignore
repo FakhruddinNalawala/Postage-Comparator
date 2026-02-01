@@ -1,0 +1,5 @@
+target
+.git
+*.md
+.m2-local
+.m2-repo

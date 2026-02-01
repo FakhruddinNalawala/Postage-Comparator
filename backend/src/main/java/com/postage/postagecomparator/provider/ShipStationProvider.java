@@ -66,8 +66,9 @@ public class ShipStationProvider implements CarrierProvider {
     public Optional<CarrierQuote> quote(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items) {
-        Optional<List<CarrierQuote>> quotes = quotes(request, origin, packaging, items);
+            List<Item> items,
+            boolean isExpress) {
+        Optional<List<CarrierQuote>> quotes = quotes(request, origin, packaging, items, isExpress);
         return quotes.flatMap(list -> list.stream()
                 .min(Comparator.comparingDouble(CarrierQuote::totalCostAud)));
     }
@@ -76,7 +77,8 @@ public class ShipStationProvider implements CarrierProvider {
     public Optional<List<CarrierQuote>> quotes(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items) {
+            List<Item> items,
+            boolean isExpress) {
         String apiKey = settingsService.getShipStationApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             log.info("ShipStation API key not configured, skipping API call and using rules-based pricing");
@@ -174,8 +176,8 @@ public class ShipStationProvider implements CarrierProvider {
                     if (currency != null && !currency.equalsIgnoreCase("aud")) {
                         return null;
                     }
-                    Double amount = parseDouble(amountObj);
-                    if (amount == null || amount <= 0) {
+                    Double deliveryCostFromApi = parseDouble(amountObj);
+                    if (deliveryCostFromApi == null || deliveryCostFromApi <= 0) {
                         return null;
                     }
 
@@ -183,7 +185,8 @@ public class ShipStationProvider implements CarrierProvider {
                     Integer deliveryDays = parseInteger(rate.get("delivery_days"));
 
                     double packagingCost = packaging.packagingCostAud();
-                    double deliveryCost = amount - packagingCost;
+                    double deliveryCost = deliveryCostFromApi;
+                    double totalCostAud = deliveryCost + packagingCost;
 
                     return new CarrierQuote(
                             "SHIPSTATION",
@@ -193,10 +196,13 @@ public class ShipStationProvider implements CarrierProvider {
                             packagingCost,
                             deliveryCost,
                             0.0,
-                            amount,
+                            totalCostAud,
                             "SHIPSTATION_API",
                             false,
-                            null);
+                            null, // rawCarrierRef
+                            null, // packagingName - set by caller
+                            false // isExpress - set by caller
+                    );
                 })
                 .filter(quote -> quote != null)
                 .toList();

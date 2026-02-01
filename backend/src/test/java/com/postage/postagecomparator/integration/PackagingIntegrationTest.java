@@ -16,7 +16,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postThenGet_returnsPersistedPackaging() throws Exception {
-        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1.0);
 
         var created = mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -45,7 +45,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postThenGetThenPutThenGet_updatesPersistedPackaging() throws Exception {
-        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1.0);
 
         var created = mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -57,7 +57,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
         var createdPackaging = objectMapper.readValue(created, Packaging.class);
 
-        var updateRequest = new Packaging(null, "Updated Box", "Updated desc", 12, 12, 12, 0, 1.5);
+        var updateRequest = new Packaging(null, "Updated Box", "Updated desc", 12, 12, 12, 1.5);
 
         mockMvc.perform(put("/api/packaging/{id}", createdPackaging.id())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -78,7 +78,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postDuplicateName_returns400() throws Exception {
-        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1.0);
 
         mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -95,7 +95,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void putUnknownId_returns404() throws Exception {
-        var request = new Packaging(null, "New Box", "Desc", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "New Box", "Desc", 10, 10, 10, 1.0);
 
         mockMvc.perform(put("/api/packaging/{id}", "missing-id")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -107,7 +107,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void deleteThenList_returnsEmpty() throws Exception {
-        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1.0);
 
         var created = mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -133,7 +133,7 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postThenGetThenDeleteThenGet_returns404() throws Exception {
-        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1000, 1.0);
+        var request = new Packaging(null, "Box", "Small box", 10, 10, 10, 1.0);
 
         var created = mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -157,8 +157,8 @@ class PackagingIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postTwoPackagings_thenGetList_returnsBoth() throws Exception {
-        var first = new Packaging(null, "Box", "Small box", 10, 10, 10, 1000, 1.0);
-        var second = new Packaging(null, "Satchel", "Flat", 30, 25, 2, 1500, 0.5);
+        var first = new Packaging(null, "Box", "Small box", 10, 10, 10, 1.0);
+        var second = new Packaging(null, "Satchel", "Flat", 30, 25, 2, 0.5);
 
         mockMvc.perform(post("/api/packaging")
                         .contentType(MediaType.APPLICATION_JSON)

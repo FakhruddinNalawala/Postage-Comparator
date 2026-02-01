@@ -35,6 +35,18 @@ public record CarrierQuote(
         @NotNull
         boolean ruleFallbackUsed,
 
-        String rawCarrierRef
+        String rawCarrierRef,
+
+        /**
+         * Name of the packaging used for this quote.
+         * Different quotes may use different packaging (cheapest vs smallest).
+         */
+        String packagingName,
+
+        /**
+         * Whether this is an express delivery option.
+         */
+        @NotNull
+        boolean isExpress
 ) {
 }

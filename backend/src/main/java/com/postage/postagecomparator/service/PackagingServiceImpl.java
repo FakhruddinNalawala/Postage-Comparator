@@ -64,10 +64,6 @@ public class PackagingServiceImpl implements PackagingService {
         if (packaging.packagingCostAud() <= 0) {
             throw new BadRequestException("Packaging cost must be greater than 0");
         }
-        
-        var volume = packaging.internalVolumeCubicCm() > 0 
-                ? packaging.internalVolumeCubicCm() 
-                : packaging.lengthCm() * packaging.heightCm() * packaging.widthCm();
 
         var packagings = listAllPackagings();
         if (packagings.stream().anyMatch(p -> p.name().equals(packaging.name()))) {
@@ -81,7 +77,6 @@ public class PackagingServiceImpl implements PackagingService {
                 packaging.lengthCm(),
                 packaging.heightCm(),
                 packaging.widthCm(),
-                volume,
                 packaging.packagingCostAud());
         packagings.add(newPackaging);
         savePackagings(packagings);
@@ -127,8 +122,6 @@ public class PackagingServiceImpl implements PackagingService {
                 packaging.lengthCm() > 0 ? packaging.lengthCm() : existing.lengthCm(),
                 packaging.heightCm() > 0 ? packaging.heightCm() : existing.heightCm(),
                 packaging.widthCm() > 0 ? packaging.widthCm() : existing.widthCm(),
-                packaging.internalVolumeCubicCm() > 0 ? packaging.internalVolumeCubicCm()
-                        : existing.internalVolumeCubicCm(),
                 packaging.packagingCostAud() > 0 ? packaging.packagingCostAud() : existing.packagingCostAud());
         packagings.set(existingIndex, updated);
         savePackagings(packagings);

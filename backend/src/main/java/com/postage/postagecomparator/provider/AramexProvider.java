@@ -74,7 +74,8 @@ public class AramexProvider implements CarrierProvider {
     public Optional<CarrierQuote> quote(ShipmentRequest request,
                                         OriginSettings origin,
                                         Packaging packaging,
-                                        List<Item> items) {
+                                        List<Item> items,
+                                        boolean isExpress) {
         String username = env("ARAMEX_USERNAME");
         String password = env("ARAMEX_PASSWORD");
         String accountNumber = env("ARAMEX_ACCOUNT_NUMBER");
@@ -151,7 +152,8 @@ public class AramexProvider implements CarrierProvider {
     public Optional<List<CarrierQuote>> quotes(ShipmentRequest request,
                                                OriginSettings origin,
                                                Packaging packaging,
-                                               List<Item> items) {
+                                               List<Item> items,
+                                               boolean isExpress) {
         return Optional.empty();
     }
 
@@ -176,8 +178,8 @@ public class AramexProvider implements CarrierProvider {
             String value = (String) xpath.evaluate("//*[local-name()='TotalAmount']/*[local-name()='Value']/text()",
                     doc, XPathConstants.STRING);
 
-            Double totalCost = parseDouble(value);
-            if (totalCost == null) {
+            Double deliveryCostFromApi = parseDouble(value);
+            if (deliveryCostFromApi == null) {
                 log.warn("Aramex rate response missing TotalAmount");
                 return Optional.empty();
             }
@@ -188,7 +190,8 @@ public class AramexProvider implements CarrierProvider {
             }
 
             double packagingCost = packaging.packagingCostAud();
-            double deliveryCost = totalCost - packagingCost;
+            double deliveryCost = deliveryCostFromApi;
+            double totalCostAud = deliveryCost + packagingCost;
 
             return Optional.of(new CarrierQuote(
                     "ARAMEX",
@@ -198,10 +201,12 @@ public class AramexProvider implements CarrierProvider {
                     packagingCost,
                     deliveryCost,
                     0.0,
-                    totalCost,
+                    totalCostAud,
                     "ARAMEX_API",
                     false,
-                    null
+                    null, // rawCarrierRef
+                    null, // packagingName - set by caller
+                    false // isExpress - set by caller
             ));
         } catch (Exception e) {
             log.error("Failed to parse Aramex rate response: {}. Stack: {}", e.getMessage(), summarizeStackTrace(e));

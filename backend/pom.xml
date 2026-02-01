@@ -14,6 +14,9 @@
         <spring.boot.version>3.3.2</spring.boot.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
+        <binpacking.version>4.0.0</binpacking.version>
+        <mockito.version>5.13.0</mockito.version>
+        <byte-buddy-agent.version>1.14.18</byte-buddy-agent.version>
     </properties>
 
     <dependencyManagement>
@@ -86,7 +89,7 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>5.13.0</version>
+            <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -105,10 +108,31 @@
             <version>1.20.3</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- 3D bin packing for checking if items actually fit inside a packaging box -->
+        <dependency>
+            <groupId>com.github.skjolber.3d-bin-container-packing</groupId>
+            <artifactId>core</artifactId>
+            <version>${binpacking.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.skjolber.3d-bin-container-packing</groupId>
+            <artifactId>api</artifactId>
+            <version>${binpacking.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.3</version>
+                <configuration>
+                    <argLine>-Xshare:off -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy-agent.version}/byte-buddy-agent-${byte-buddy-agent.version}.jar</argLine>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

@@ -17,6 +17,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -57,9 +58,9 @@ class QuoteServiceImplTest {
         lenient().when(providerRegistry.getEnabledProviders(providerConfig))
                 .thenReturn(List.of(ausPostProvider));
         lenient().when(ausPostProvider.getName()).thenReturn("auspost");
-        lenient().when(ausPostProvider.quote(any(), any(), any(), any()))
+        lenient().when(ausPostProvider.quote(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(Optional.empty());
-        lenient().when(ausPostProvider.quotes(any(), any(), any(), any()))
+        lenient().when(ausPostProvider.quotes(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(Optional.empty());
     }
 
@@ -82,8 +83,7 @@ class QuoteServiceImplTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "pack-1",
-                false
+                null
         );
 
         assertThatThrownBy(() -> quoteService.calculateQuote(request))
@@ -101,32 +101,12 @@ class QuoteServiceImplTest {
                 "VIC",
                 "AU",
                 List.of(),
-                "pack-1",
-                false
+                null
         );
 
         assertThatThrownBy(() -> quoteService.calculateQuote(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("At least one item is required");
-
-        verifyNoInteractions(settingsService, itemService, packagingService);
-    }
-
-    @Test
-    void calculateQuote_whenPackagingIdBlank_throwsIllegalArgumentException() {
-        var request = new ShipmentRequest(
-                "3000",
-                "Melbourne",
-                "VIC",
-                "AU",
-                List.of(new ShipmentItemSelection("item-1", 1)),
-                "   ",
-                false
-        );
-
-        assertThatThrownBy(() -> quoteService.calculateQuote(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Packaging is required");
 
         verifyNoInteractions(settingsService, itemService, packagingService);
     }
@@ -139,8 +119,7 @@ class QuoteServiceImplTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 0)),
-                "pack-1",
-                false
+                null
         );
 
         assertThatThrownBy(() -> quoteService.calculateQuote(request))
@@ -160,8 +139,7 @@ class QuoteServiceImplTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "pack-1",
-                false
+                null
         );
 
         given(settingsService.getOriginSettings()).willReturn(null);
@@ -172,24 +150,51 @@ class QuoteServiceImplTest {
     }
 
     @Test
-    void calculateQuote_whenPackagingNotFound_throwsIllegalArgumentException() {
+    void calculateQuote_whenNoPackagingAvailable_throwsIllegalArgumentException() {
         var request = new ShipmentRequest(
                 "3000",
                 "Melbourne",
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "missing-pack",
-                false
+                null
         );
 
+        var item = new Item("item-1", "Widget", null, 100, 5, 5, 5);
         given(settingsService.getOriginSettings())
                 .willReturn(new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now()));
-        given(packagingService.findById("missing-pack")).willReturn(Optional.empty());
+        given(itemService.findById("item-1")).willReturn(Optional.of(item));
+        given(packagingService.findAll()).willReturn(List.of());
 
         assertThatThrownBy(() -> quoteService.calculateQuote(request))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Packaging with id missing-pack not found");
+                .hasMessageContaining("No packaging available");
+    }
+
+    @Test
+    void calculateQuote_whenNoPackagingFitsItemVolume_throwsIllegalArgumentException() {
+        var request = new ShipmentRequest(
+                "3000",
+                "Melbourne",
+                "VIC",
+                "AU",
+                List.of(new ShipmentItemSelection("item-1", 1)),
+                null
+        );
+
+        // Item has volume 10*10*10 = 1000 cm³
+        var item = new Item("item-1", "Large Widget", null, 100, 10, 10, 10);
+        // Packaging has volume 5*5*5 = 125 cm³ (too small)
+        var smallPackaging = new Packaging("pack-1", "Small Box", null, 5, 5, 5, 1.0);
+        
+        given(settingsService.getOriginSettings())
+                .willReturn(new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now()));
+        given(itemService.findById("item-1")).willReturn(Optional.of(item));
+        given(packagingService.findAll()).willReturn(List.of(smallPackaging));
+
+        assertThatThrownBy(() -> quoteService.calculateQuote(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No packaging found that can fit");
     }
 
     @Test
@@ -200,14 +205,11 @@ class QuoteServiceImplTest {
                 "VIC",
                 "AU",
                 List.of(new ShipmentItemSelection("item-1", 1)),
-                "pack-1",
-                false
+                null
         );
 
         given(settingsService.getOriginSettings())
                 .willReturn(new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now()));
-        given(packagingService.findById("pack-1"))
-                .willReturn(Optional.of(new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 1.0)));
         given(itemService.findById("item-1")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> quoteService.calculateQuote(request))
@@ -223,22 +225,25 @@ class QuoteServiceImplTest {
                 "VIC",
                 null, // country should default to AU in destination
                 List.of(new ShipmentItemSelection("item-1", 2)),
-                "pack-1",
-                false
+                null
         );
 
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Small box", null, 10, 10, 10, 1000, 2.0);
-        var item = new Item("item-1", "Widget", null, 250);
+        // Item volume: 5*5*5 = 125 cm³, 2 items = 250 cm³
+        var item = new Item("item-1", "Widget", null, 250, 5, 5, 5);
+        // Packaging volume: 10*10*10 = 1000 cm³ (fits 250 cm³)
+        var packaging = new Packaging("pack-1", "Small box", null, 10, 10, 10, 2.0);
 
         // 2 items * 250g = 500g
         given(settingsService.getOriginSettings()).willReturn(origin);
-        given(packagingService.findById("pack-1")).willReturn(Optional.of(packaging));
         given(itemService.findById("item-1")).willReturn(Optional.of(item));
+        given(packagingService.findAll()).willReturn(List.of(packaging));
 
-        // Provide brackets that will match the 0.5kg actual weight and the volume-weight (250 kg)
-        var weightBracket = new WeightBracket(0.0, 1.0, 10.0, 15.0);
-        var volumeBracket = new WeightBracket(200.0, 300.0, 20.0, 25.0);
+        // Provide brackets: weight bracket matches 0.5kg (actual) but NOT 0.25kg (volume);
+        // volume bracket matches 0.25kg (volume-weight) but NOT 0.5kg. So both match and
+        // delivery cost uses the higher (volume-based) price.
+        var weightBracket = new WeightBracket(0.4, 1.0, 10.0, 15.0);
+        var volumeBracket = new WeightBracket(0.2, 0.3, 20.0, 25.0);
         given(settingsService.getAusPostWeightBrackets())
                 .willReturn(List.of(weightBracket, volumeBracket));
 
@@ -250,18 +255,38 @@ class QuoteServiceImplTest {
         assertThat(result.destination().postcode()).isEqualTo("3000");
         assertThat(result.destination().country()).isEqualTo("AU"); // defaulted
         assertThat(result.packaging()).isEqualTo(packaging);
-        assertThat(result.carrierQuotes()).hasSize(1);
 
-        var ausPostQuote = result.carrierQuotes().get(0);
-        assertThat(ausPostQuote.carrier()).isEqualTo("AUSPOST");
-        assertThat(ausPostQuote.pricingSource()).isEqualTo("RULES");
-        assertThat(ausPostQuote.ruleFallbackUsed()).isTrue();
-        // delivery cost is max of the two brackets' standard prices (20.0)
-        assertThat(ausPostQuote.deliveryCostAud()).isEqualTo(20.0);
-        assertThat(ausPostQuote.packagingCostAud()).isEqualTo(2.0);
-        assertThat(ausPostQuote.totalCostAud()).isEqualTo(22.0);
+        // We now expect both standard and express AusPost rules-based quotes.
+        assertThat(result.carrierQuotes()).hasSize(2);
 
-        // Sendle integration disabled, so only AusPost is returned.
+        var standardQuote = result.carrierQuotes().stream()
+                .filter(q -> !q.isExpress())
+                .findFirst()
+                .orElseThrow();
+        var expressQuote = result.carrierQuotes().stream()
+                .filter(CarrierQuote::isExpress)
+                .findFirst()
+                .orElseThrow();
+
+        // Standard (rules-based Parcel Post)
+        assertThat(standardQuote.carrier()).isEqualTo("AUSPOST");
+        assertThat(standardQuote.serviceName()).contains("Parcel Post");
+        assertThat(standardQuote.pricingSource()).isEqualTo("RULES");
+        assertThat(standardQuote.ruleFallbackUsed()).isTrue();
+        assertThat(standardQuote.deliveryCostAud()).isEqualTo(20.0);
+        assertThat(standardQuote.packagingCostAud()).isEqualTo(2.0);
+        assertThat(standardQuote.totalCostAud()).isEqualTo(22.0);
+
+        // Express (rules-based Express Post)
+        assertThat(expressQuote.carrier()).isEqualTo("AUSPOST");
+        assertThat(expressQuote.serviceName()).contains("Express Post");
+        assertThat(expressQuote.pricingSource()).isEqualTo("RULES");
+        assertThat(expressQuote.ruleFallbackUsed()).isTrue();
+        assertThat(expressQuote.deliveryCostAud()).isEqualTo(25.0);
+        assertThat(expressQuote.packagingCostAud()).isEqualTo(2.0);
+        assertThat(expressQuote.totalCostAud()).isEqualTo(27.0);
+
+        // Sendle integration disabled, so only AusPost is returned (standard + express).
     }
 
     // --- Direct tests of AusPost rules-based pricing for edge cases ---
@@ -270,9 +295,9 @@ class QuoteServiceImplTest {
     void calculateAusPostRulesBasedQuote_whenOnlyWeightMatches_usesWeightBracket() throws Exception {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
         var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 1.0);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1.0);
 
-        // 500g -> 0.5kg, volumeWeightInKg will be large (no volume bracket)
+        // 500g -> 0.5kg, volumeWeightInKg will be based on dimensions
         int totalWeightGrams = 500;
 
         var weightBracket = new WeightBracket(0.0, 1.0, 10.0, 15.0);
@@ -289,7 +314,7 @@ class QuoteServiceImplTest {
     void calculateAusPostRulesBasedQuote_whenOnlyVolumeMatches_usesVolumeBracket() throws Exception {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
         var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 8000, 1.0);
+        var packaging = new Packaging("pack-1", "Box", null, 200, 200, 200, 1.0);
 
         // 50g -> 0.05kg (no weight bracket), but volumeWeightInKg is very large and will
         // fall into the configured volume bracket.
@@ -309,7 +334,7 @@ class QuoteServiceImplTest {
     void calculateAusPostRulesBasedQuote_whenNoBracketMatches_throwsIllegalArgumentException() throws Exception {
         var origin = new OriginSettings("2000", "Sydney", "NSW", "AU", null, Instant.now());
         var destination = new QuoteResult.Destination("3000", "Melbourne", "VIC", "AU");
-        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1000, 1.0);
+        var packaging = new Packaging("pack-1", "Box", null, 10, 10, 10, 1.0);
 
         int totalWeightGrams = 1000; // 1kg
         given(settingsService.getAusPostWeightBrackets())

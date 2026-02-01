@@ -29,7 +29,12 @@ logs/
 
 # Docker
 Dockerfile
+**/Dockerfile
 docker-compose.yml
+docker-compose.standalone.yml
+
+# Make
+Makefile
 
 # Shell scripts
 *.sh

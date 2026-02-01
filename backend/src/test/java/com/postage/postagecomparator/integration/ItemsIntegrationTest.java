@@ -16,7 +16,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postThenGet_returnsPersistedItem() throws Exception {
-        var request = new Item(null, "Box", "Small box", 100);
+        var request = new Item(null, "Box", "Small box", 100, 10, 20, 30);
 
         var created = mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -25,6 +25,9 @@ class ItemsIntegrationTest extends IntegrationTestBase {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").isNotEmpty())
                 .andExpect(jsonPath("$.name").value("Box"))
+                .andExpect(jsonPath("$.lengthCm").value(10))
+                .andExpect(jsonPath("$.heightCm").value(20))
+                .andExpect(jsonPath("$.widthCm").value(30))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -45,7 +48,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postThenGetThenPutThenGet_updatesPersistedItem() throws Exception {
-        var request = new Item(null, "Box", "Small box", 100);
+        var request = new Item(null, "Box", "Small box", 100, 10, 20, 30);
 
         var created = mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -57,7 +60,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
         var createdItem = objectMapper.readValue(created, Item.class);
 
-        var updateRequest = new Item(null, "Updated Box", "Updated desc", 250);
+        var updateRequest = new Item(null, "Updated Box", "Updated desc", 250, 15, 25, 35);
 
         mockMvc.perform(put("/api/items/{id}", createdItem.id())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -66,7 +69,10 @@ class ItemsIntegrationTest extends IntegrationTestBase {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(createdItem.id()))
                 .andExpect(jsonPath("$.name").value("Updated Box"))
-                .andExpect(jsonPath("$.unitWeightGrams").value(250));
+                .andExpect(jsonPath("$.unitWeightGrams").value(250))
+                .andExpect(jsonPath("$.lengthCm").value(15))
+                .andExpect(jsonPath("$.heightCm").value(25))
+                .andExpect(jsonPath("$.widthCm").value(35));
 
         mockMvc.perform(get("/api/items/{id}", createdItem.id()))
                 .andExpect(status().isOk())
@@ -77,7 +83,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postDuplicateName_returns400() throws Exception {
-        var request = new Item(null, "Box", "Small box", 100);
+        var request = new Item(null, "Box", "Small box", 100, 10, 20, 30);
 
         mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -94,7 +100,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void putUnknownId_returns404() throws Exception {
-        var request = new Item(null, "New Box", "Desc", 100);
+        var request = new Item(null, "New Box", "Desc", 100, 10, 20, 30);
 
         mockMvc.perform(put("/api/items/{id}", "missing-id")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -106,7 +112,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void deleteThenList_returnsEmpty() throws Exception {
-        var request = new Item(null, "Box", "Small box", 100);
+        var request = new Item(null, "Box", "Small box", 100, 10, 20, 30);
 
         var created = mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -132,7 +138,7 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postThenGetThenDeleteThenGet_returns404() throws Exception {
-        var request = new Item(null, "Box", "Small box", 100);
+        var request = new Item(null, "Box", "Small box", 100, 10, 20, 30);
 
         var created = mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -156,8 +162,8 @@ class ItemsIntegrationTest extends IntegrationTestBase {
 
     @Test
     void postTwoItems_thenGetList_returnsBoth() throws Exception {
-        var first = new Item(null, "Box", "Small box", 100);
-        var second = new Item(null, "Envelope", "Flat", 50);
+        var first = new Item(null, "Box", "Small box", 100, 10, 20, 30);
+        var second = new Item(null, "Envelope", "Flat", 50, 5, 10, 15);
 
         mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)

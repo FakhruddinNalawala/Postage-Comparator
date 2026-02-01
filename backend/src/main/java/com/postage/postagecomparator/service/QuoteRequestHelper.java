@@ -6,6 +6,7 @@ import com.postage.postagecomparator.model.Packaging;
 import com.postage.postagecomparator.model.QuoteResult;
 import com.postage.postagecomparator.model.ShipmentItemSelection;
 import com.postage.postagecomparator.model.ShipmentRequest;
+
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -40,9 +41,6 @@ public class QuoteRequestHelper {
         if (request.items() == null || request.items().isEmpty()) {
             throw new IllegalArgumentException("At least one item is required");
         }
-        if (request.packagingId() == null || request.packagingId().isBlank()) {
-            throw new IllegalArgumentException("Packaging is required");
-        }
         for (ShipmentItemSelection itemSelection : request.items()) {
             if (itemSelection.quantity() <= 0) {
                 throw new IllegalArgumentException("Item quantity must be greater than 0");
@@ -61,6 +59,49 @@ public class QuoteRequestHelper {
     public Packaging getPackaging(String packagingId) {
         return packagingService.findById(packagingId)
                 .orElseThrow(() -> new IllegalArgumentException("Packaging with id " + packagingId + " not found"));
+    }
+
+    /**
+     * Calculate the total volume of all items in cubic centimeters.
+     */
+    public int calculateTotalItemVolume(List<ShipmentItemSelection> itemSelections) {
+        return itemSelections.stream()
+                .mapToInt(selection -> {
+                    Item item = itemService.findById(selection.itemId())
+                            .orElseThrow(() -> new IllegalArgumentException("Item with id " + selection.itemId() + " not found"));
+                    return item.volumeCubicCm() * selection.quantity();
+                })
+                .sum();
+    }
+
+    /**
+     * Find all packaging options whose internal volume exceeds the sum of item volumes.
+     */
+    public List<Packaging> findAllFittingPackaging(int totalVolumeCubicCm) {
+        return getFittingPackagings(totalVolumeCubicCm);
+    }
+
+    /**
+     * Get all packaging options whose internal volume exceeds the given total item volume.
+     */
+    private List<Packaging> getFittingPackagings(int totalVolumeCubicCm) {
+        List<Packaging> allPackagings = packagingService.findAll();
+
+        if (allPackagings.isEmpty()) {
+            throw new IllegalArgumentException("No packaging available. Please create at least one packaging option.");
+        }
+
+        List<Packaging> fitting = allPackagings.stream()
+                .filter(p -> p.volumeCubicCm() >= totalVolumeCubicCm)
+                .toList();
+
+        if (fitting.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No packaging found that can fit the total item volume of " + totalVolumeCubicCm + " cm³. " +
+                            "Please add a larger packaging option.");
+        }
+
+        return fitting;
     }
 
     public int calculateTotalWeight(List<ShipmentItemSelection> itemSelections) {

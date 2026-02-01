@@ -12,6 +12,22 @@ public record Item(
         String description,
 
         @Positive
-        int unitWeightGrams
+        int unitWeightGrams,
+
+        @Positive
+        int lengthCm,
+
+        @Positive
+        int heightCm,
+
+        @Positive
+        int widthCm
 ) {
+    /**
+     * Calculates the volume from the dimensions.
+     * @return the volume in cubic centimeters
+     */
+    public int volumeCubicCm() {
+        return lengthCm * heightCm * widthCm;
+    }
 }

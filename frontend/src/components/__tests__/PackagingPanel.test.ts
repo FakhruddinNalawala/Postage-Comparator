@@ -16,7 +16,6 @@ describe('PackagingPanel', () => {
       lengthCm: 1,
       widthCm: 2,
       heightCm: 3,
-      internalVolumeCubicCm: 6,
       packagingCostAud: 1.25
     };
     const wrapper = mount(PackagingPanel, {

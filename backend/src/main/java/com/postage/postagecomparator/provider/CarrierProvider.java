@@ -26,18 +26,32 @@ public interface CarrierProvider {
     /**
      * Attempt to quote using provider APIs.
      * Returns Optional.empty() on failure to allow rules-based fallback.
+     *
+     * @param request the shipment request details
+     * @param origin the origin settings
+     * @param packaging the packaging to use
+     * @param items the items being shipped
+     * @param isExpress true for express delivery, false for standard
      */
     Optional<CarrierQuote> quote(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items);
+            List<Item> items,
+            boolean isExpress);
 
     /**
      * Attempt to quote using provider APIs.
      * Returns Optional.empty() on failure to allow rules-based fallback.
+     *
+     * @param request the shipment request details
+     * @param origin the origin settings
+     * @param packaging the packaging to use
+     * @param items the items being shipped
+     * @param isExpress true for express delivery, false for standard
      */
     Optional<List<CarrierQuote>> quotes(ShipmentRequest request,
             OriginSettings origin,
             Packaging packaging,
-            List<Item> items);
+            List<Item> items,
+            boolean isExpress);
 }

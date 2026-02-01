@@ -2,6 +2,7 @@ package com.postage.postagecomparator.service;
 
 import com.postage.postagecomparator.model.*;
 import com.postage.postagecomparator.config.ProviderConfig;
+import com.postage.postagecomparator.config.PricingSourceFormatter;
 import com.postage.postagecomparator.provider.CarrierProvider;
 import com.postage.postagecomparator.provider.ProviderRegistry;
 
@@ -11,13 +12,19 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import com.postage.postagecomparator.util.DeliveryEtaUtils;
 
 @Service
 public class QuoteServiceImpl implements QuoteService {
 
     private static final Logger log = LoggerFactory.getLogger(QuoteServiceImpl.class);
+    private static final String AUSPOST_PROVIDER_NAME = "auspost";
+    private static final int STACK_TRACE_LIMIT = 10;
 
     // Sendle integration is currently disabled.
     // private final WebClient sendleWebClient;
@@ -45,68 +52,155 @@ public class QuoteServiceImpl implements QuoteService {
         // Get origin settings
         OriginSettings origin = requestHelper.getOriginSettingsOrThrow();
 
-        // Get packaging
-        Packaging packaging = requestHelper.getPackaging(request.packagingId());
+        // Calculate total item volume and find all packaging whose volume exceeds item volume
+        int totalItemVolumeCubicCm = requestHelper.calculateTotalItemVolume(request.items());
+        List<Packaging> fittingPackagings = requestHelper.findAllFittingPackaging(totalItemVolumeCubicCm);
 
-        // Calculate total weight and volume
+        // Calculate total weight
         int totalWeightGrams = requestHelper.calculateTotalWeight(request.items());
-        double weightInKg = totalWeightGrams / 1000.0;
-        double volumeWeightInKg = packaging.internalVolumeCubicCm() * 0.25 / 1000.0; // Volume weight: 250g per 1000cm³ = 0.25kg per 1000cm³
-        int totalVolumeCubicCm = packaging.internalVolumeCubicCm();
 
         // Build destination
         QuoteResult.Destination destination = requestHelper.buildDestination(request);
 
-        // Calculate carrier quotes
-        List<CarrierQuote> carrierQuotes = new ArrayList<>();
-
-        // When API clients are implemented, try live APIs first and fall back to rules.
+        // Resolve items once for all providers
         List<Item> resolvedItems = requestHelper.resolveItems(request.items());
+
+        // Get quotes for each fitting packaging and each express/standard option
+        List<CarrierQuote> allCarrierQuotes = new ArrayList<>();
+        for (Packaging packaging : fittingPackagings) {
+            for (boolean isExpress : new boolean[]{false, true}) {
+                List<CarrierQuote> quotes = getQuotesForPackaging(
+                        request, origin, packaging, resolvedItems, destination, totalWeightGrams, isExpress);
+                allCarrierQuotes.addAll(quotes);
+            }
+        }
+
+        // Format pricing source for display
+        List<CarrierQuote> displayQuotes = allCarrierQuotes.stream()
+                .map(quote -> new CarrierQuote(
+                        quote.carrier(),
+                        quote.serviceName(),
+                        quote.deliveryEtaDaysMin(),
+                        quote.deliveryEtaDaysMax(),
+                        quote.packagingCostAud(),
+                        quote.deliveryCostAud(),
+                        quote.surchargesAud(),
+                        quote.totalCostAud(),
+                        PricingSourceFormatter.format(quote.pricingSource()),
+                        quote.ruleFallbackUsed(),
+                        quote.rawCarrierRef(),
+                        quote.packagingName(),
+                        quote.isExpress()))
+                .toList();
+
+        // Use smallest fitting packaging as primary (best for volume-weight carriers)
+        Packaging primaryPackaging = fittingPackagings.stream()
+                .min((p1, p2) -> Integer.compare(p1.volumeCubicCm(), p2.volumeCubicCm()))
+                .orElseThrow();
+        double volumeWeightInKg = primaryPackaging.volumeCubicCm() * 0.25 / 1000.0;
+
+        // For reporting, expose the total *item* volume, not the box volume.
+        int totalVolumeCubicCm = totalItemVolumeCubicCm;
+
+        return new QuoteResult(
+                totalWeightGrams,
+                totalWeightGrams / 1000.0,
+                volumeWeightInKg,
+                totalVolumeCubicCm,
+                origin,
+                destination,
+                primaryPackaging,
+                displayQuotes,
+                "AUD",
+                Instant.now());
+    }
+
+    /**
+     * Get quotes from all providers for a specific packaging option and delivery speed.
+     */
+    private List<CarrierQuote> getQuotesForPackaging(
+            ShipmentRequest request,
+            OriginSettings origin,
+            Packaging packaging,
+            List<Item> resolvedItems,
+            QuoteResult.Destination destination,
+            int totalWeightGrams,
+            boolean isExpress) {
+        
+        List<CarrierQuote> carrierQuotes = new ArrayList<>();
         boolean ausPostProvidedQuote = false;
+        boolean ausPostOnly = request.isAusPostOnly();
+        
+        if (ausPostOnly) {
+            log.info("AusPost-only mode enabled (PO Box / Parcel Locker destination)");
+        }
 
         for (CarrierProvider provider : providerRegistry.getEnabledProviders(providerConfig)) {
             String providerName = provider.getName();
+            
+            // Skip non-AusPost providers if ausPostOnly is set
+            if (ausPostOnly && !AUSPOST_PROVIDER_NAME.equalsIgnoreCase(providerName)) {
+                log.debug("Skipping provider '{}' - AusPost-only mode enabled", providerName);
+                continue;
+            }
+            
             try {
-                var multiQuotes = provider.quotes(request, origin, packaging, resolvedItems);
-                if (multiQuotes != null && multiQuotes.isPresent() && !multiQuotes.get().isEmpty()) {
-                    carrierQuotes.addAll(multiQuotes.get());
-                    if ("auspost".equalsIgnoreCase(providerName)) {
+                Optional<List<CarrierQuote>> multiQuotes = provider.quotes(request, origin, packaging, resolvedItems, isExpress)
+                        .filter(quotes -> !quotes.isEmpty());
+                if (multiQuotes.isPresent()) {
+                    // Add packaging name and isExpress to each quote
+                    carrierQuotes.addAll(multiQuotes.get().stream()
+                            .map(q -> withPackagingNameAndExpress(q, packaging.name(), isExpress))
+                            .toList());
+                    if (AUSPOST_PROVIDER_NAME.equalsIgnoreCase(providerName)) {
                         ausPostProvidedQuote = true;
                     }
                     continue;
                 }
 
-                var singleQuote = provider.quote(request, origin, packaging, resolvedItems);
-                if (singleQuote != null && singleQuote.isPresent()) {
-                    carrierQuotes.add(singleQuote.get());
-                    if ("auspost".equalsIgnoreCase(providerName)) {
+                Optional<CarrierQuote> singleQuote = provider.quote(request, origin, packaging, resolvedItems, isExpress);
+                if (singleQuote.isPresent()) {
+                    carrierQuotes.add(withPackagingNameAndExpress(singleQuote.get(), packaging.name(), isExpress));
+                    if (AUSPOST_PROVIDER_NAME.equalsIgnoreCase(providerName)) {
                         ausPostProvidedQuote = true;
                     }
                 }
             } catch (RuntimeException e) {
-                log.error("Provider '{}' failed during quote; continuing with other providers. Stack: {}",
+                log.error("Provider '{}' failed during {} quote with packaging '{}'; continuing. Stack: {}",
                         providerName,
+                        isExpress ? "express" : "standard",
+                        packaging.name(),
                         summarizeStackTrace(e));
             }
         }
 
         if (!ausPostProvidedQuote) {
-            carrierQuotes.add(calculateAusPostRulesBasedQuote(origin, destination, totalWeightGrams, packaging,
-                    request.isExpress()));
+            CarrierQuote ausPostQuote = calculateAusPostRulesBasedQuote(
+                    origin, destination, totalWeightGrams, packaging, isExpress);
+            carrierQuotes.add(withPackagingNameAndExpress(ausPostQuote, packaging.name(), isExpress));
         }
-        // Sendle integration disabled.
 
-        return new QuoteResult(
-                totalWeightGrams,
-                weightInKg,
-                volumeWeightInKg,
-                totalVolumeCubicCm,
-                origin,
-                destination,
-                packaging,
-                carrierQuotes,
-                "AUD",
-                Instant.now());
+        return carrierQuotes;
+    }
+
+    /**
+     * Create a new CarrierQuote with the packaging name and isExpress set.
+     */
+    private CarrierQuote withPackagingNameAndExpress(CarrierQuote quote, String packagingName, boolean isExpress) {
+        return new CarrierQuote(
+                quote.carrier(),
+                quote.serviceName(),
+                quote.deliveryEtaDaysMin(),
+                quote.deliveryEtaDaysMax(),
+                quote.packagingCostAud(),
+                quote.deliveryCostAud(),
+                quote.surchargesAud(),
+                quote.totalCostAud(),
+                quote.pricingSource(),
+                quote.ruleFallbackUsed(),
+                quote.rawCarrierRef(),
+                packagingName,
+                isExpress);
     }
 
     private CarrierQuote calculateAusPostRulesBasedQuote(
@@ -128,36 +222,29 @@ public class QuoteServiceImpl implements QuoteService {
 
         // Placeholder implementation
         log.debug("Calculating rules-based quote for carrier: AUSPOST, weight: {}g, volume: {}cm³",
-                totalWeightGrams, packaging.internalVolumeCubicCm());
+                totalWeightGrams, packaging.volumeCubicCm());
 
         double weightInKg = totalWeightGrams / 1000.0;
-        double volumeWeightInKg = packaging.internalVolumeCubicCm() * 0.25;
+        double volumeWeightInKg = packaging.volumeCubicCm() * 0.25 / 1000.0;
         List<WeightBracket> brackets = settingsService.getAusPostWeightBrackets();
-        WeightBracket matched1 = null;
-        WeightBracket matched2 = null;
+        Optional<WeightBracket> weightBracket = findBracket(brackets, weightInKg);
+        Optional<WeightBracket> volumeBracket = findBracket(brackets, volumeWeightInKg);
 
-        for (WeightBracket b : brackets) {
-            if (matched1 == null && weightInKg > b.minWeightInclusive()
-                    && weightInKg <= b.maxWeightInclusive()) {
-                matched1 = b;
-            }
-            if (matched2 == null && volumeWeightInKg > b.minWeightInclusive()
-                    && volumeWeightInKg <= b.maxWeightInclusive()) {
-                matched2 = b;
-            }
-        }
-
-        if (matched1 == null && matched2 == null) {
+        if (weightBracket.isEmpty() && volumeBracket.isEmpty()) {
             throw new IllegalArgumentException("No bracket found");
         }
-        
-        double deliveryCost = switch (getBracketState(matched1, matched2)) {
-            case ONLY_MATCHED1 -> isExpress ? matched1.priceExpress() : matched1.priceStandard();
-            case ONLY_MATCHED2 -> isExpress ? matched2.priceExpress() : matched2.priceStandard();
-            case BOTH_PRESENT -> isExpress 
-                    ? Math.max(matched1.priceExpress(), matched2.priceExpress())
-                    : Math.max(matched1.priceStandard(), matched2.priceStandard());
-        };
+
+        double deliveryCost = isExpress
+                ? Stream.of(weightBracket, volumeBracket)
+                        .flatMap(Optional::stream)
+                        .mapToDouble(WeightBracket::priceExpress)
+                        .max()
+                        .orElseThrow()
+                : Stream.of(weightBracket, volumeBracket)
+                        .flatMap(Optional::stream)
+                        .mapToDouble(WeightBracket::priceStandard)
+                        .max()
+                        .orElseThrow();
         double packagingCostAud = packaging.packagingCostAud();
         double totalCost = packagingCostAud + deliveryCost;
 
@@ -166,7 +253,7 @@ public class QuoteServiceImpl implements QuoteService {
 
         return new CarrierQuote(
                 "AUSPOST",
-                "Derived from rules",
+                isExpress ? "Express Post (Rules)" : "Parcel Post (Rules)",
                 etaResult.minDays(),
                 etaResult.maxDays(),
                 packaging.packagingCostAud(),
@@ -175,7 +262,9 @@ public class QuoteServiceImpl implements QuoteService {
                 totalCost,
                 "RULES",
                 true, // ruleFallbackUsed
-                null // rawCarrierRef
+                null, // rawCarrierRef
+                null, // packagingName - set by withPackagingNameAndExpress()
+                false // isExpress - set by withPackagingNameAndExpress()
         );
     }
 
@@ -364,7 +453,9 @@ public class QuoteServiceImpl implements QuoteService {
                     totalCost,
                     "SENDLE_API",
                     false, // ruleFallbackUsed
-                    productCode // rawCarrierRef
+                    productCode, // rawCarrierRef
+                    null, // packagingName - set by caller
+                    false // isExpress - set by caller
             );
         } catch (ClassCastException e) {
             log.error("Failed to parse Sendle response: type casting error", e);
@@ -630,26 +721,16 @@ public class QuoteServiceImpl implements QuoteService {
     // }
 
     private String summarizeStackTrace(Throwable error) {
-        StackTraceElement[] stack = error.getStackTrace();
-        int limit = Math.min(stack.length, 10);
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < limit; i++) {
-            builder.append(stack[i]).append(i == limit - 1 ? "" : " | ");
-        }
-        return builder.toString();
+        return Arrays.stream(error.getStackTrace())
+                .limit(STACK_TRACE_LIMIT)
+                .map(StackTraceElement::toString)
+                .collect(Collectors.joining(" | "));
     }
 
-    private enum BracketState {
-        ONLY_MATCHED1, ONLY_MATCHED2, BOTH_PRESENT
-    }
-
-    private BracketState getBracketState(WeightBracket matched1, WeightBracket matched2) {
-        if (matched1 != null && matched2 != null) {
-            return BracketState.BOTH_PRESENT;
-        } else if (matched1 != null) {
-            return BracketState.ONLY_MATCHED1;
-        } else {
-            return BracketState.ONLY_MATCHED2;
-        }
+    private Optional<WeightBracket> findBracket(List<WeightBracket> brackets, double weightInKg) {
+        return brackets.stream()
+                .filter(bracket -> weightInKg > bracket.minWeightInclusive()
+                        && weightInKg <= bracket.maxWeightInclusive())
+                .findFirst();
     }
 }

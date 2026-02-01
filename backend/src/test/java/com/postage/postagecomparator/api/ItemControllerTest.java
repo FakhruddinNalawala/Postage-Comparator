@@ -43,7 +43,7 @@ class ItemControllerTest {
 
     @Test
     void list_returnsItemsFromService() throws Exception {
-        var item = new Item("id-1", "Box", "Desc", 100);
+        var item = new Item("id-1", "Box", "Desc", 100, 10, 20, 30);
         given(itemService.findAll()).willReturn(List.of(item));
 
         mockMvc.perform(get("/api/items"))
@@ -55,7 +55,7 @@ class ItemControllerTest {
 
     @Test
     void get_whenItemExists_returns200() throws Exception {
-        var item = new Item("id-1", "Box", "Desc", 100);
+        var item = new Item("id-1", "Box", "Desc", 100, 10, 20, 30);
         given(itemService.findById("id-1")).willReturn(Optional.of(item));
 
         mockMvc.perform(get("/api/items/{id}", "id-1"))
@@ -75,8 +75,8 @@ class ItemControllerTest {
 
     @Test
     void create_whenValid_returns201AndBody() throws Exception {
-        var request = new Item(null, "Box", "Desc", 100);
-        var created = new Item("id-1", "Box", "Desc", 100);
+        var request = new Item(null, "Box", "Desc", 100, 10, 20, 30);
+        var created = new Item("id-1", "Box", "Desc", 100, 10, 20, 30);
         given(itemService.create(any(Item.class))).willReturn(created);
 
         mockMvc.perform(post("/api/items")
@@ -90,7 +90,7 @@ class ItemControllerTest {
 
     @Test
     void create_whenServiceThrowsBadRequest_returns400WithErrorBody() throws Exception {
-        var request = new Item(null, "Box", "Desc", 0);
+        var request = new Item(null, "Box", "Desc", 0, 10, 20, 30);
 
         mockMvc.perform(post("/api/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -103,8 +103,8 @@ class ItemControllerTest {
 
     @Test
     void update_whenValid_returns200AndBody() throws Exception {
-        var request = new Item(null, "New Box", "New desc", 200);
-        var updated = new Item("id-1", "New Box", "New desc", 200);
+        var request = new Item(null, "New Box", "New desc", 200, 15, 25, 35);
+        var updated = new Item("id-1", "New Box", "New desc", 200, 15, 25, 35);
         given(itemService.update(eq("id-1"), any(Item.class))).willReturn(updated);
 
         mockMvc.perform(put("/api/items/{id}", "id-1")
@@ -118,7 +118,7 @@ class ItemControllerTest {
 
     @Test
     void update_whenSpuriousId_returns404() throws Exception {
-        var request = new Item(null, "New Box", "New desc", 200);
+        var request = new Item(null, "New Box", "New desc", 200, 15, 25, 35);
         given(itemService.update(eq("non-existent-id"), any(Item.class)))
                 .willThrow(new NotFoundException("Item with id non-existent-id not found"));
 
@@ -133,7 +133,7 @@ class ItemControllerTest {
 
     @Test
     void update_whenBlankId_returns400() throws Exception {
-        var request = new Item(null, "New Box", "New desc", 200);
+        var request = new Item(null, "New Box", "New desc", 200, 15, 25, 35);
         given(itemService.update(eq(" "), any(Item.class)))
                 .willThrow(new BadRequestException("id must not be null or blank"));
 

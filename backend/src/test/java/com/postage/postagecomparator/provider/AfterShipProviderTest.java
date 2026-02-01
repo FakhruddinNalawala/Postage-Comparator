@@ -88,10 +88,10 @@ class AfterShipProviderTest {
         var provider = buildProviderWithoutStubs();
 
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }
@@ -115,17 +115,19 @@ class AfterShipProviderTest {
         given(settingsService.getAfterShipApiKey()).willReturn("key");
         var provider = buildProviderWithResponse(response);
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         given(requestHelper.buildDestination(request))
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isPresent();
-        assertThat(quote.get().totalCostAud()).isEqualTo(12.50);
+        assertThat(quote.get().deliveryCostAud()).isEqualTo(12.50);
+        assertThat(quote.get().packagingCostAud()).isEqualTo(2.0);
+        assertThat(quote.get().totalCostAud()).isEqualTo(14.50);
         assertThat(quote.get().pricingSource()).isEqualTo("AFTERSHIP_API");
     }
 
@@ -134,14 +136,14 @@ class AfterShipProviderTest {
         given(settingsService.getAfterShipApiKey()).willReturn("key");
         var provider = buildProviderWithError(new WebClientException("timeout") {});
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         given(requestHelper.buildDestination(request))
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }
@@ -159,14 +161,14 @@ class AfterShipProviderTest {
         given(settingsService.getAfterShipApiKey()).willReturn("key");
         var provider = buildProviderWithError(exception);
         var origin = new OriginSettings("3004", "Melbourne", "VIC", "AU", null, Instant.now());
-        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 1000, 2.0);
-        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), "pack-1", false);
+        var packaging = new Packaging("pack-1", "Box", null, 40, 20, 20, 2.0);
+        var request = new ShipmentRequest("2008", "Darlington", "NSW", "AU", List.of(), null);
 
         given(requestHelper.buildDestination(request))
                 .willReturn(new QuoteResult.Destination("2008", "Darlington", "NSW", "AU"));
         given(requestHelper.calculateTotalWeight(request.items())).willReturn(600);
 
-        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of());
+        Optional<CarrierQuote> quote = provider.quote(request, origin, packaging, List.of(), false);
 
         assertThat(quote).isEmpty();
     }

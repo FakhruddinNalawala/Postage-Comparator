@@ -11,7 +11,7 @@ describe('ItemsPanel', () => {
   it('emits add/edit/delete actions', async () => {
     const wrapper = mount(ItemsPanel, {
       props: {
-        items: [{ id: 'item-1', name: 'Widget', description: null, unitWeightGrams: 100 }]
+        items: [{ id: 'item-1', name: 'Widget', description: null, unitWeightGrams: 100, lengthCm: 10, heightCm: 20, widthCm: 30 }]
       }
     });
 
@@ -22,7 +22,7 @@ describe('ItemsPanel', () => {
 
     expect(wrapper.emitted('add')).toHaveLength(1);
     expect(wrapper.emitted('edit')?.[0]).toEqual([
-      { id: 'item-1', name: 'Widget', description: null, unitWeightGrams: 100 }
+      { id: 'item-1', name: 'Widget', description: null, unitWeightGrams: 100, lengthCm: 10, heightCm: 20, widthCm: 30 }
     ]);
     expect(wrapper.emitted('delete')?.[0]).toEqual(['item-1']);
   });
