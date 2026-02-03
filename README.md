@@ -38,6 +38,31 @@ Replace `YOUR_USERNAME/YOUR_REPO` with your GitHub repo path and `YOUR_DOCKERHUB
 1. Clone the repo and add `DOCKER_HUB_USERNAME=your-dockerhub-username` to `.env`
 2. Run `make docker-pull` then `make docker-run`
 
+### One-shot bootstrap for another user (with Makefile only)
+
+To let someone else run the app with a single `make` command:
+
+1. **Send them**:
+   - This `Makefile`
+   - A `.env` template they can edit
+2. They place `Makefile` and `.env` together in an empty folder.
+3. In `.env`, they set at least:
+   - `REPO_URL=https://github.com/FakhruddinNalawala/Postage-Comparator.git`
+   - `DOCKER_HUB_USERNAME=your-dockerhub-username` (the Docker Hub account that pushed the images)
+   - Any provider API keys they want to use (e.g. `AUSPOST_API_KEY`, `SHIPPIT_API_KEY`, ...)
+4. They run:
+
+   ```bash
+   make bootstrap
+   ```
+
+This will:
+
+- Clone (or update) the repo into `postage-comparator-app/` (or `APP_DIR` if overridden)
+- Copy their `.env` into that repo’s root
+- Pull the Docker images from Docker Hub
+- Start the app containers so they can open http://localhost
+
 - `make build-frontend` - Build frontend only
 - `make build-backend` - Build backend only  
 - `make docker-down` - Stop containers

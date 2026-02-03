@@ -1,0 +1,25 @@
+# Standalone compose - pull & run only (no build).
+# Use with: DOCKER_HUB_USERNAME=username docker compose -f docker-compose.standalone.yml pull
+# Then:     DOCKER_HUB_USERNAME=username docker compose -f docker-compose.standalone.yml up -d
+
+services:
+  backend:
+    image: ${DOCKER_HUB_USERNAME:?Set DOCKER_HUB_USERNAME to the image publisher's Docker Hub username}/postage-comparator-backend:latest
+    container_name: postage-comparator-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - POSTAGE_DATA_DIR=/app/data
+    volumes:
+      - postage-data:/app/data
+
+  frontend:
+    image: ${DOCKER_HUB_USERNAME:?Set DOCKER_HUB_USERNAME to the image publisher's Docker Hub username}/postage-comparator-frontend:latest
+    container_name: postage-comparator-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postage-data:
