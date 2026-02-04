@@ -588,8 +588,8 @@ const packagingSummaries = computed(() => {
   margin: 0.75rem 0 1.25rem;
   padding: 0.75rem 0.9rem;
   border-radius: 6px;
-  background: var(--bg-secondary, #f5f5f5);
-  border: 1px solid var(--border-color, #ddd);
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
 }
 
 .packaging-volume-summary h5 {
@@ -631,20 +631,20 @@ const packagingSummaries = computed(() => {
 
 .tab-btn {
   padding: 0.5rem 1rem;
-  border: 1px solid var(--border-color, #ccc);
-  background: var(--bg-secondary, #f5f5f5);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-control);
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.2s, border-color 0.2s;
 }
 
 .tab-btn:hover {
-  background: var(--bg-hover, #e5e5e5);
+  background: var(--bg-card);
 }
 
 .tab-btn.active {
-  background: var(--bg-primary, #fff);
-  border-color: var(--accent-color, #007bff);
+  background: var(--bg-card);
+  border-color: var(--border-highlight);
   font-weight: 600;
 }
 </style>
