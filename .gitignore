@@ -34,7 +34,7 @@ docker-compose.yml
 #docker-compose.standalone.yml
 
 # Make
-Makefile
+#Makefile
 
 # Shell scripts
 *.sh
