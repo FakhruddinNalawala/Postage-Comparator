@@ -8,6 +8,8 @@ services:
     container_name: postage-comparator-backend
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       - POSTAGE_DATA_DIR=/app/data
     volumes:
