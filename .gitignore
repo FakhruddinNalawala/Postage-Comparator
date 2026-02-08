@@ -48,6 +48,7 @@ frontend/coverage/
 # Local env overrides
 .env.local
 .env.*.local
+.env.example
 
 # Temporary files
 *.tmp

@@ -1,4 +1,4 @@
-.PHONY: build-frontend build-backend build-all docker-build docker-push docker-pull docker-run docker-down docker-logs standalone-pull standalone-run bootstrap clean
+.PHONY: build-frontend build-backend build-all docker-build docker-push docker-pull docker-run docker-down docker-logs standalone-pull standalone-run bootstrap setup start stop restart status logs clean
 
 # Bootstrap configuration (for other users)
 # Publisher can override these here; other users can override via .env.
@@ -87,6 +87,66 @@ bootstrap:
 	fi; \
 	cd "$(APP_DIR)" && DOCKER_HUB_USERNAME="$$DOCKER_HUB_USERNAME" docker compose -f docker-compose.standalone.yml pull && \
 	DOCKER_HUB_USERNAME="$$DOCKER_HUB_USERNAME" docker compose -f docker-compose.standalone.yml up -d
+
+# ──────────────────────────────────────────────────────────────
+# Quick-start for users who cloned the repo and have a .env ready.
+#   1. git clone <repo-url> && cd postage-comparator
+#   2. cp your-prepared.env .env
+#   3. make setup        (pulls images & starts containers)
+#
+# After initial setup:
+#   make start / make stop / make restart / make logs / make status
+# ──────────────────────────────────────────────────────────────
+
+# One-command setup: validate .env, pull pre-built images, and start all containers.
+setup:
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found."; \
+		echo "Create a .env file with the required variables before running 'make setup'."; \
+		echo "Required variables: DOCKER_HUB_USERNAME, AUSPOST_API_KEY, SHIPPIT_API_KEY, etc."; \
+		exit 1; \
+	fi
+	@$(ENV_PREFIX) \
+	if [ -z "$$DOCKER_HUB_USERNAME" ]; then \
+		echo "ERROR: DOCKER_HUB_USERNAME is not set in .env."; \
+		echo "This is needed to pull the pre-built Docker images."; \
+		exit 1; \
+	fi
+	@echo "==> .env found and validated."
+	@echo "==> Pulling pre-built images from Docker Hub..."
+	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml pull
+	@echo "==> Starting containers..."
+	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml up -d
+	@echo ""
+	@echo "==> Setup complete!"
+	@echo "    Frontend : http://localhost"
+	@echo "    Backend  : http://localhost:8080"
+	@echo ""
+	@echo "    Useful commands:"
+	@echo "      make logs     - tail container logs"
+	@echo "      make stop     - stop all containers"
+	@echo "      make restart  - restart all containers"
+	@echo "      make status   - show container status"
+
+# Start containers (assumes images are already pulled via 'make setup')
+start:
+	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml up -d
+	@echo "App started -> http://localhost"
+
+# Stop containers
+stop:
+	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml down
+
+# Restart containers
+restart: stop start
+
+# Show container status
+status:
+	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml ps
+
+# Tail container logs (Ctrl+C to exit)
+logs:
+	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml logs -f
 
 # Clean build artifacts
 clean:
