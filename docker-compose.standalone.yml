@@ -19,7 +19,7 @@ services:
     image: ${DOCKER_HUB_USERNAME:?Set DOCKER_HUB_USERNAME to the image publisher's Docker Hub username}/postage-comparator-frontend:latest
     container_name: postage-comparator-frontend
     ports:
-      - "80:80"
+      - "3000:3000"
     depends_on:
       - backend
 

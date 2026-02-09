@@ -119,7 +119,7 @@ setup:
 	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml up -d
 	@echo ""
 	@echo "==> Setup complete!"
-	@echo "    Frontend : http://localhost"
+	@echo "    Frontend : http://localhost:3000"
 	@echo "    Backend  : http://localhost:8080"
 	@echo ""
 	@echo "    Useful commands:"
@@ -131,7 +131,7 @@ setup:
 # Start containers (assumes images are already pulled via 'make setup')
 start:
 	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml up -d
-	@echo "App started -> http://localhost"
+	@echo "App started -> http://localhost:3000"
 
 # Stop containers
 stop:
