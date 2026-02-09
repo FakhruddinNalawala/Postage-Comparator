@@ -8,6 +8,21 @@ APP_DIR ?= postage-comparator-app
 # Load environment variables from .env (if present) before running commands
 ENV_PREFIX = if [ -f .env ]; then set -a; . .env; set +a; fi;
 
+# Auto-detect container compose command (docker compose / podman compose / podman-compose).
+# Override with: make COMPOSE="podman-compose" setup
+COMPOSE ?= $(shell \
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then \
+    echo "docker compose"; \
+  elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then \
+    echo "podman compose"; \
+  elif command -v podman-compose >/dev/null 2>&1; then \
+    echo "podman-compose"; \
+  elif command -v docker-compose >/dev/null 2>&1; then \
+    echo "docker-compose"; \
+  else \
+    echo "docker compose"; \
+  fi)
+
 # Default target
 all: build-all
 
@@ -24,17 +39,17 @@ build-all: build-frontend build-backend
 
 # Build Docker images
 docker-build:
-	@$(ENV_PREFIX) docker compose build
+	@$(ENV_PREFIX) $(COMPOSE) build
 
 # Push images to Docker Hub (requires DOCKER_HUB_USERNAME in .env, run: docker login)
 docker-push: docker-build
-	@$(ENV_PREFIX) docker compose push
+	@$(ENV_PREFIX) $(COMPOSE) push
 
 # Pull pre-built images from Docker Hub (requires DOCKER_HUB_USERNAME in .env)
 docker-pull:
 	@$(ENV_PREFIX) if [ -z "$$DOCKER_HUB_USERNAME" ]; then \
 		echo "Add DOCKER_HUB_USERNAME=your-dockerhub-username to .env"; exit 1; fi; \
-	docker compose pull
+	$(COMPOSE) pull
 
 # Run the app in Docker (requires .env in same folder)
 docker-run:
@@ -42,27 +57,27 @@ docker-run:
 		echo "Creating .env from .env.example (if exists)..."; \
 		if [ -f .env.example ]; then cp .env.example .env; fi; \
 	fi
-	@$(ENV_PREFIX) docker compose up -d
+	@$(ENV_PREFIX) $(COMPOSE) up -d
 
 # Stop Docker containers
 docker-down:
-	@$(ENV_PREFIX) docker compose down
+	@$(ENV_PREFIX) $(COMPOSE) down
 
 # View Docker logs
 docker-logs:
-	@$(ENV_PREFIX) docker compose logs -f
+	@$(ENV_PREFIX) $(COMPOSE) logs -f
 
 # Standalone (pull-only) workflow for other users using docker-compose.standalone.yml
 # Usage: DOCKER_HUB_USERNAME=your-dockerhub-username make standalone-run
 standalone-pull:
 	@$(ENV_PREFIX) if [ -z "$$DOCKER_HUB_USERNAME" ]; then \
 		echo "Set DOCKER_HUB_USERNAME=your-dockerhub-username in .env or env"; exit 1; fi; \
-	docker compose -f docker-compose.standalone.yml pull
+	$(COMPOSE) -f docker-compose.standalone.yml pull
 
 standalone-run: standalone-pull
 	@$(ENV_PREFIX) if [ -z "$$DOCKER_HUB_USERNAME" ]; then \
 		echo "Set DOCKER_HUB_USERNAME=your-dockerhub-username in .env or env"; exit 1; fi; \
-	docker compose -f docker-compose.standalone.yml up -d
+	$(COMPOSE) -f docker-compose.standalone.yml up -d
 
 # Bootstrap: clone or update repo, copy .env, pull images, and start app using standalone compose.
 # Intended for other users who only have this Makefile and a .env file.
@@ -85,8 +100,8 @@ bootstrap:
 	else \
 		echo "No .env in $$(pwd); containers will use $(APP_DIR)/.env if present"; \
 	fi; \
-	cd "$(APP_DIR)" && DOCKER_HUB_USERNAME="$$DOCKER_HUB_USERNAME" docker compose -f docker-compose.standalone.yml pull && \
-	DOCKER_HUB_USERNAME="$$DOCKER_HUB_USERNAME" docker compose -f docker-compose.standalone.yml up -d
+	cd "$(APP_DIR)" && DOCKER_HUB_USERNAME="$$DOCKER_HUB_USERNAME" $(COMPOSE) -f docker-compose.standalone.yml pull && \
+	DOCKER_HUB_USERNAME="$$DOCKER_HUB_USERNAME" $(COMPOSE) -f docker-compose.standalone.yml up -d
 
 # ──────────────────────────────────────────────────────────────
 # Quick-start for users who cloned the repo and have a .env ready.
@@ -113,10 +128,11 @@ setup:
 		exit 1; \
 	fi
 	@echo "==> .env found and validated."
+	@echo "==> Using compose command: $(COMPOSE)"
 	@echo "==> Pulling pre-built images from Docker Hub..."
-	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml pull
+	@$(ENV_PREFIX) $(COMPOSE) -f docker-compose.standalone.yml pull
 	@echo "==> Starting containers..."
-	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml up -d
+	@$(ENV_PREFIX) $(COMPOSE) -f docker-compose.standalone.yml up -d
 	@echo ""
 	@echo "==> Setup complete!"
 	@echo "    Frontend : http://localhost:3000"
@@ -130,23 +146,23 @@ setup:
 
 # Start containers (assumes images are already pulled via 'make setup')
 start:
-	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml up -d
+	@$(ENV_PREFIX) $(COMPOSE) -f docker-compose.standalone.yml up -d
 	@echo "App started -> http://localhost:3000"
 
 # Stop containers
 stop:
-	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml down
+	@$(ENV_PREFIX) $(COMPOSE) -f docker-compose.standalone.yml down
 
 # Restart containers
 restart: stop start
 
 # Show container status
 status:
-	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml ps
+	@$(ENV_PREFIX) $(COMPOSE) -f docker-compose.standalone.yml ps
 
 # Tail container logs (Ctrl+C to exit)
 logs:
-	@$(ENV_PREFIX) docker compose -f docker-compose.standalone.yml logs -f
+	@$(ENV_PREFIX) $(COMPOSE) -f docker-compose.standalone.yml logs -f
 
 # Clean build artifacts
 clean:
